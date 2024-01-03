@@ -1,5 +1,4 @@
-data_sources/*
-!data_sources/template.gpkg
+data_sources/conus*
 output/*
 !output/.gitkeep
 ```

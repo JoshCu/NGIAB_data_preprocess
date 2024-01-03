@@ -8,6 +8,7 @@ import pandas as pd
 import json
 import geopandas as gpd
 
+
 gpd.options.io_engine = "pyogrio"
 triggers = None
 
@@ -135,15 +136,16 @@ def subset_parquet(ids):
     model_attributes = (model_attributes
                         .set_index("divide_id")
                         .loc[cat_ids])
-    model_attributes.to_csv(output_dir / "cfe_model_attributes.parquet")
+    model_attributes.to_csv(output_dir / "cfe_noahowp_attributes.csv")
 
-def make_x_walk(hydrofabric) -> None:
+def make_x_walk(hydrofabric, out_dir) -> None:
+
     attributes = gpd.read_file(hydrofabric, layer="flowpath_attributes").set_index("id")
     x_walk = pd.Series(attributes[~attributes["rl_gages"].isna()]["rl_gages"])
     data = {}
     for wb, gage in x_walk.items():
         data[wb] = {"Gage_no": [gage]}
-    with open("crosswalk.json", "w") as fp:
+    with open(out_dir / "crosswalk.json", "w") as fp:
         json.dump(data, fp, indent=2)
 
 def read_layer(hydrofabric, layer):
@@ -153,17 +155,18 @@ def read_layer(hydrofabric, layer):
     return df
 
 def make_geojson(hydrofabric: str) -> None:
+    out_dir = Path(__file__).parent / "output" / hydrofabric.stem.replace("_subset", "")
     try:
         catchments = gpd.read_file(hydrofabric, layer="divides")
         nexuses = gpd.read_file(hydrofabric, layer="nexus")
         flowpaths = gpd.read_file(hydrofabric, layer="flowpaths")
         edge_list = gpd.read_file(hydrofabric, layer="flowpath_edge_list")
         
-        make_x_walk(hydrofabric)
-        catchments.to_file("catchments.geojson")
-        nexuses.to_file("nexus.geojson")
-        flowpaths.to_file("flowpaths.geojson")
-        edge_list.to_json("flowpath_edge_list.json", orient="records", indent=2)
+        make_x_walk(hydrofabric, out_dir)
+        catchments.to_file(out_dir / "catchments.geojson")
+        nexuses.to_file(out_dir / "nexus.geojson")
+        flowpaths.to_file(out_dir / "flowpaths.geojson")
+        edge_list.to_json(out_dir / "flowpath_edge_list.json", orient="records", indent=2)
     except Exception as e:
         print(f"Unable to use hydrofabric file {hydrofabric}")
         print(str(e))
@@ -189,11 +192,21 @@ if __name__ == "__main__":
     graph = get_graph(hydrofabric)
     print("Getting Upstream IDs")
     upstream_ids = get_upstream_ids("wb-1643991", graph)
+    output_dir = output_dir / upstream_ids[0]
+    if output_dir.exists():
+        os.system(f"rm -rf {output_dir}")
     print("Creating Subset GPKG")
-    gpkg_name = create_subset_gpkg(upstream_ids, hydrofabric)
-    out_dir = output_dir / upstream_ids[0]
-    output_gpkg = out_dir / gpkg_name
-    os.system(f"ogr2ogr -f GPKG {out_dir / 'temp.gpkg'} {output_gpkg}")
-    os.system(f"rm {output_gpkg}* && mv {out_dir / 'temp.gpkg'} {output_gpkg}")
+    gpkg_name = create_subset_gpkg(upstream_ids, hydrofabric)    
+    output_gpkg = output_dir / gpkg_name
+    os.system(f"ogr2ogr -f GPKG {output_dir / 'temp.gpkg'} {output_gpkg}")
+    os.system(f"rm {output_gpkg}* && mv {output_dir / 'temp.gpkg'} {output_gpkg}")
     subset_parquet(upstream_ids)
     make_geojson(gpkg_name)
+    #make config subfolder and move files there
+    config_dir = output_dir / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    # get all files in output_dir
+    files = [x for x in output_dir.iterdir()]
+    for file in files:
+        if file.suffix in [".gpkg", ".csv", ".json", ".geojson"]:
+            os.system(f"mv {file} {config_dir}")
