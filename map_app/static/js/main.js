@@ -23,7 +23,7 @@ function onMapClick(event) {
 
         // Example: Add a marker at the clicked location
         L.marker([lat, lng]).addTo(map)
-            .bindPopup('You clicked at ' + lat + ', ' + lng)
+            .bindPopup('You clicked basin ' + data['wb_id'] + '\n coords :' + lat + ', ' + lng)
             .openPopup();
     })
     .catch(error => {

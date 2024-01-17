@@ -3,6 +3,8 @@ import geopandas as gpd
 import requests
 import re
 import math
+from pathlib import Path
+from shapely.geometry import Point
 
 main = Blueprint('main', __name__)
 
@@ -11,38 +13,18 @@ def index():
     return render_template('index.html')
 
 def get_wbid_from_point(coords):
+    # inpute coords are EPSG:4326
+    print(coords)
     # takes a point and returns the wbid of the watershed it is in
-    hs_wms_vpu_all = f'HS-35e8c6023c154b6298fcda280beda849'
-
-    url = f'https://geoserver.hydroshare.org/geoserver/{hs_wms_vpu_all}/wfs?' \
-            'service=wfs&version=2.0.0&' \
-            f'request=getFeature&' \
-            'srsName=EPSG:4269&' \
-            f'bbox={coords[1]},{coords[0]},{coords[1]},{coords[0]},EPSG:4269&' \
-            f'typeName=vpu_boundaries&' \
-            'outputFormat=json&' \
-            'PropertyName=VPU'
-    print(url)
-
-    q = requests.Request('GET', url).prepare().url
-    df = gpd.read_file(q, format='json')
-    print(df)
-    # exit if a VPU is not found, i.e. a user doesn't click on the layer
-    if len(df) == 0: return
-    
-    VPU = df.VPU.values[0]
-    hs_wms_res = f'HS-{geometry_urls[VPU]}'
-    print(f'You selected VPU {VPU}')
-    url = f'https://geoserver.hydroshare.org/geoserver/{hs_wms_res}/wfs?' \
-            'service=wfs&version=2.0.0&' \
-            f'request=getFeature&' \
-            'srsName=EPSG:4326&' \
-            f'bbox={coords[1]},{coords[0]},{coords[1]},{coords[0]},EPSG:4326&' \
-            f'typeName={VPU}_boundaries&' \
-            'outputFormat=json&'
-
-    q = Request('GET', url).prepare().url
-    df = gpd.read_file(q, format='json')
+    # create a geometry mask for the point
+    # load the watershed boundaries
+    q = Path(__file__).parent.parent / "data_sources" / "conus.gpkg" 
+    d = {'col1': ['point'], 'geometry': [Point(coords['lng'], coords['lat'])]}
+    point = gpd.GeoDataFrame(d, crs="EPSG:4326")
+    df = gpd.read_file(q, format='GPKG', layer='divides', mask=point)
+    # print(df)
+    # print(df['id'].values[0])
+    return df['id'].values[0]
 
 
 
@@ -53,12 +35,13 @@ def handle_map_interaction():
     wb_id = get_wbid_from_point(coordinates)
     result = {
         'status': 'success',
-        'message': 'Received coordinates: {}'.format(coordinates)
+        'message': 'Received coordinates: {}'.format(coordinates),
+        'wb_id': wb_id
     }
     return jsonify(result)
 
 def convert_grid_to_coords(xmin, ymin, xmax, ymax):
-    # converts to lat/lon EPSG:4326
+    # converts tile x,y index to lat/lon EPSG:4326
     zoom = 18
     n = 2 ** zoom
     xmin = xmin / n * 360.0 - 180.0
