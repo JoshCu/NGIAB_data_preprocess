@@ -1,4 +1,33 @@
 // Function to handle map click events
+// globals that should be a cookie or something
+// this is why I don't call myself a full stack developer
+var wb_id_dict = {};
+var selected_wb_layer = null;
+
+async function update_selected() {
+    console.log('updating selected');
+    fetch('/get_geojson_from_wbids', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(wb_id_dict),
+    })
+    .then(response => response.json())
+    .then(data => {
+        // if the wb_id is already in the dict, remove the key
+            // remove the old layer
+        if (selected_wb_layer){
+            map.removeLayer(selected_wb_layer);
+        }
+        console.log(data);
+        // add the new layer
+        selected_wb_layer = L.geoJSON(data).addTo(map);
+        })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+
+
 function onMapClick(event) {
     // Extract the clicked coordinates
     var lat = event.latlng.lat;
@@ -16,70 +45,25 @@ function onMapClick(event) {
     })
     .then(response => response.json())
     .then(data => {
-        // Process the response data
-        // This will depend on what your Flask backend returns
-        // For example, updating the map with new layers or markers
-        console.log(data); // Log the data for debugging
-
+        // if the wb_id is already in the dict, remove the key
+        if (data['wb_id'] in wb_id_dict){
+            delete wb_id_dict[data['wb_id']];}
+        else{
+        wb_id_dict[data['wb_id']] = [lat, lng];}
+        update_selected();
         // Example: Add a marker at the clicked location
         L.marker([lat, lng]).addTo(map)
             .bindPopup('You clicked basin ' + data['wb_id'] + '\n coords :' + lat + ', ' + lng)
             .openPopup();
+        console.log(wb_id_dict);
+        
     })
     .catch(error => {
         console.error('Error:', error);
     });
+    
+    
 }
-
-// Initialize the map
-var map = L.map('map').setView([41.74614949822607, -111.76617850993877], 2);
-
-// Add OpenStreetMap tiles to the map
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 18,
-    attribution: '© OpenStreetMap contributors',
-    crs: L.CRS.EPSG3857
-}).addTo(map);
-
-var gagueslayer = L.esri.featureLayer({
-    url: "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/0"
-})
-
-var waterbasinlayer = L.esri.featureLayer({
-    url: "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/0"
-})
-
-
-function queryLayer() {
-    // Query the ArcGIS layer for features within the current view
-    var bounds = map.getBounds();
-    gagueslayer.query()
-        .within(bounds)
-        .where("FCODE = 36700")
-        .run(function(error, featureCollection) {
-            if (error) {
-                console.error('Query error:', error);
-                return;
-            }
-            // Do something with the features, e.g., update a layer on the map
-            //L.geoJSON(featureCollection).addTo(map);
-        });
-        waterbasinlayer.query()
-        .within(bounds)
-        .where("hudigit = 2")
-        .run(function(error, featureCollection) {
-            if (error) {
-                console.error('Query error:', error);
-                return;
-            }
-            // Do something with the features, e.g., update a layer on the map
-            L.geoJSON(featureCollection).addTo(map);
-    });
-
-    // add the layer to the map
-}
-
-var baseUrl = "http://geoserver.hydroshare.org/geoserver/gwc/service/tms/1.0.0/";  // Base URL of the WMTS service
 
 async function get_boundary(vpu_code){
     // calculate the bounds from the grid bounds
@@ -103,21 +87,22 @@ async function get_boundary(vpu_code){
     return L.latLngBounds(L.latLng(ymin, xmin), L.latLng(ymax, xmax));
 }
 
-var boundaries_of_vpus = "HS-35e8c6023c154b6298fcda280beda849:vpu_boundaries@EPSG:900913";
-
-southWest = L.latLng(22.5470, -129.4137),
-northEast = L.latLng(51.0159, -68.9337),
-bounds = L.latLngBounds(southWest, northEast);
-
-var wmtsLayer = L.tileLayer(baseUrl + 
-    boundaries_of_vpus + '@png/{z}/{x}/{-y}.png', {
-    attribution: '&copy; <a href="https://nationalmap.gov/">National Map</a> contributors',
-    transparent: true,
-    format: 'image/png',
-    opacity: 0.8,
-    maxZoom: 6,
-    bounds: bounds,    
-}).addTo(map);
+async function addLayers() {
+    await Promise.all(Object.keys(geometry_urls).map(async (key) => {      
+        var geometryUrl = 'HS-'+geometry_urls[key] + ':'+key+'_boundaries@EPSG:900913';
+        bounds = await get_boundary(geometryUrl);
+        L.tileLayer(baseUrl + geometryUrl + '@png/{z}/{x}/{-y}.png', {
+            attribution: '&copy; <a href="https://nationalmap.gov/">National Map</a> contributors',
+            transparent: true,
+            format: 'image/png',
+            opacity: 0.5,
+            minZoom: 7,
+            maxZoom: 16,
+            reuseTiles: true,
+            bounds: bounds,
+        }).addTo(map);
+    }));
+}
 
 geometry_urls = {
     '16':  'e8ddee6a8a90484fa7a976458e79c0c3',
@@ -144,22 +129,33 @@ geometry_urls = {
     '14':  '2d78b60ad0cf469daced4c4aa37764ad',
 }
 
-async function addLayers() {
-    await Promise.all(Object.keys(geometry_urls).map(async (key) => {      
-        var geometryUrl = 'HS-'+geometry_urls[key] + ':'+key+'_boundaries@EPSG:900913';
-        bounds = await get_boundary(geometryUrl);
-        L.tileLayer(baseUrl + geometryUrl + '@png/{z}/{x}/{-y}.png', {
-            attribution: '&copy; <a href="https://nationalmap.gov/">National Map</a> contributors',
-            transparent: true,
-            format: 'image/png',
-            opacity: 0.5,
-            minZoom: 7,
-            maxZoom: 16,
-            reuseTiles: true,
-            bounds: bounds,
-        }).addTo(map);
-    }));
-}
+// Initialize the map
+var map = L.map('map').setView([41.74614949822607, -111.76617850993877], 2);
+
+// Add OpenStreetMap tiles to the map
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '© OpenStreetMap contributors',
+    crs: L.CRS.EPSG3857
+}).addTo(map);
+
+var baseUrl = "http://geoserver.hydroshare.org/geoserver/gwc/service/tms/1.0.0/";  // Base URL of the WMTS service
+
+var boundaries_of_vpus = "HS-35e8c6023c154b6298fcda280beda849:vpu_boundaries@EPSG:900913";
+
+southWest = L.latLng(22.5470, -129.4137),
+northEast = L.latLng(51.0159, -68.9337),
+bounds = L.latLngBounds(southWest, northEast);
+
+var wmtsLayer = L.tileLayer(baseUrl + 
+    boundaries_of_vpus + '@png/{z}/{x}/{-y}.png', {
+    attribution: '&copy; <a href="https://nationalmap.gov/">National Map</a> contributors',
+    transparent: true,
+    format: 'image/png',
+    opacity: 0.8,
+    maxZoom: 6,
+    bounds: bounds,    
+}).addTo(map);
 
 addLayers();
 
