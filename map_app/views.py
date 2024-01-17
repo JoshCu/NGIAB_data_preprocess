@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 from shapely.geometry import Point
 import json
+from subset import get_upstream_ids, get_graph
 
 main = Blueprint('main', __name__)
 
@@ -23,8 +24,6 @@ def get_wbid_from_point(coords):
     d = {'col1': ['point'], 'geometry': [Point(coords['lng'], coords['lat'])]}
     point = gpd.GeoDataFrame(d, crs="EPSG:4326")
     df = gpd.read_file(q, format='GPKG', layer='divides', mask=point)
-    # print(df.to_json())
-    # print(df['id'].values[0])
     return df['id'].values[0]
 
 
@@ -72,11 +71,7 @@ def get_map_data():
     except requests.RequestException as e:
         return jsonify({"error": str(e)}), 500
     
-@main.route('/get_geojson_from_wbids', methods=['POST'])
-def get_geojson_from_wbids():
-    wb_dict = json.loads(request.data.decode('utf-8'))
-    print(wb_dict)
-    print(type(wb_dict))
+def wbids_to_geojson(wb_dict):
     for k, v in wb_dict.items():
         wb_dict[k] = Point(v[1], v[0])
     d = {'col1': wb_dict.keys(), 'geometry': wb_dict.values()}
@@ -84,8 +79,36 @@ def get_geojson_from_wbids():
     print(points)
     q = Path(__file__).parent.parent / "data_sources" / "conus.gpkg" 
     df = gpd.read_file(q, format='GPKG', layer='divides', mask=points)
-    print(df)
     # convert crs to 4326
     df = df.to_crs(epsg=4326)
-    print(df)
-    return df.to_json(), 200
+    return df.to_json()
+
+@main.route('/get_geojson_from_wbids', methods=['POST'])
+def get_geojson_from_wbids():
+    wb_dict = json.loads(request.data.decode('utf-8'))
+    print(wb_dict)
+    if len(wb_dict) == 0:
+        return [], 204
+    try:
+        return wbids_to_geojson(wb_dict), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+@main.route('/get_upstream_geojson_from_wbids', methods=['POST'])
+def get_upstream_geojson_from_wbids():
+    
+    wb_dict = json.loads(request.data.decode('utf-8'))
+    print(wb_dict)
+    if len(wb_dict) == 0:
+        return [], 204
+    geopackage = Path(__file__).parent.parent / "data_sources" / "conus.gpkg"
+    graph = get_graph(geopackage)
+    # get upstream ids
+    # get nexus points wb flows to
+    # use nexus points as mask to load geojson
+    try:
+        return wbids_to_geojson(wb_dict), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

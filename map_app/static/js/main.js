@@ -3,9 +3,17 @@
 // this is why I don't call myself a full stack developer
 var wb_id_dict = {};
 var selected_wb_layer = null;
+var upstream_wb_layer = null;
 
 async function update_selected() {
     console.log('updating selected');
+    if (Object.keys(wb_id_dict).length === 0){
+        if (selected_wb_layer){
+            map.removeLayer(selected_wb_layer);
+        }
+        return;
+    }
+
     fetch('/get_geojson_from_wbids', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -27,6 +35,34 @@ async function update_selected() {
     });
 }
 
+async function populate_upstream() {
+    console.log('populating upstream selected');
+    if (Object.keys(wb_id_dict).length === 0){
+        if (upstream_wb_layer){
+            map.removeLayer(upstream_wb_layer);}
+        return;
+    }
+
+    fetch('/get_upstream_geojson_from_wbids', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(wb_id_dict),
+    })
+    .then(response => response.json())
+    .then(data => {
+        // if the wb_id is already in the dict, remove the key
+            // remove the old layer
+        if (selected_wb_layer){
+            map.removeLayer(selected_wb_layer);
+        }
+        console.log(data);
+        // add the new layer
+        selected_wb_layer = L.geoJSON(data).addTo(map);
+        })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
 
 function onMapClick(event) {
     // Extract the clicked coordinates
@@ -51,11 +87,12 @@ function onMapClick(event) {
         else{
         wb_id_dict[data['wb_id']] = [lat, lng];}
         update_selected();
+        populate_upstream();
         // Example: Add a marker at the clicked location
-        L.marker([lat, lng]).addTo(map)
-            .bindPopup('You clicked basin ' + data['wb_id'] + '\n coords :' + lat + ', ' + lng)
-            .openPopup();
-        console.log(wb_id_dict);
+        // L.marker([lat, lng]).addTo(map)
+        //     .bindPopup('You clicked basin ' + data['wb_id'] + '\n coords :' + lat + ', ' + lng)
+        //     .openPopup();
+        // console.log(wb_id_dict);
         
     })
     .catch(error => {
