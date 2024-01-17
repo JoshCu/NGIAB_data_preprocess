@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Application</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
+    <style>
+        #map {
+            height: 800px; /* or any other height you prefer */
+        }
+        div.leaflet-layer:nth-child(1) {
+            filter: saturate(150%);
+        }
+        div.leaflet-layer:nth-child(n+2) {
+            filter: contrast(2345);
+            mix-blend-mode: multiply;
+        }
+    </style>
+</head>
+<body>
+    <h1>Interactive Map</h1>
+    <div id="map"></div>
+    
+
+    <!-- Leaflet JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
+    <script src="https://unpkg.com/esri-leaflet"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.6.2/proj4.js"></script>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <!-- <script>
+    var map = L.map('map').setView([41.74614949822607, -111.76617850993877], 9);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    var wmsLayer = L.tileLayer.wms('http://arcgis.cuahsi.org/arcgis/services/NHD/usgs_gages/MapServer/WmsServer', {
+        layers: '0',
+        format: 'image/png',
+        transparent: true,
+        attribution: "USGS Gages"
+    }).addTo(map);
+
+    map.on('click', function(e) {
+        // Call a function defined in main.js to handle the click event
+        onMapClick(e);
+    });
+    </script> -->
+</body>
+</html>

@@ -8,8 +8,7 @@ import pandas as pd
 import json
 import geopandas as gpd
 
-
-gpd.options.io_engine = "pyogrio"
+#gpd.options.io_engine = "pyogrio"
 triggers = None
 
 data_sources = Path(__file__).parent / "data_sources" 
