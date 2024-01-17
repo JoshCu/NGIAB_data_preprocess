@@ -24,34 +24,22 @@
     <div id="map"></div>
     <h2>Selected Basins</h2>
     <div id="selected-basins">None - get clicking!</div> <!-- HTML box to show selected water basin ids -->
-
-    
+    <button id="subset-button">Subset</button> <!-- Button to call the Flask endpoint -->
+    <div id="output-path"></div> <!-- Div to show the output path -->
+    <div>
+        <label for="start-time">Start Time:</label>
+        <input type="datetime-local" id="start-time" name="start-time">
+    </div>
+    <div>
+        <label for="end-time">End Time:</label>
+        <input type="datetime-local" id="end-time" name="end-time">
+    </div>
+    <button id="subset-button">Create Forcing From Zarrs</button>
 
     <!-- Leaflet JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
     <script src="https://unpkg.com/esri-leaflet"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.6.2/proj4.js"></script>
-
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-    <!-- <script>
-    var map = L.map('map').setView([41.74614949822607, -111.76617850993877], 9);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 18,
-        attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
-
-    var wmsLayer = L.tileLayer.wms('http://arcgis.cuahsi.org/arcgis/services/NHD/usgs_gages/MapServer/WmsServer', {
-        layers: '0',
-        format: 'image/png',
-        transparent: true,
-        attribution: "USGS Gages"
-    }).addTo(map);
-
-    map.on('click', function(e) {
-        // Call a function defined in main.js to handle the click event
-        onMapClick(e);
-    });
-    </script> -->
 </body>
 </html>

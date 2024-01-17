@@ -7,8 +7,9 @@ import pyarrow.parquet as pq
 import pandas as pd
 import json
 import geopandas as gpd
+import shutil
 
-#gpd.options.io_engine = "pyogrio"
+
 triggers = None
 
 data_sources = Path(__file__).parent / "data_sources" 
@@ -63,6 +64,8 @@ def copy_rTree_tables(table, ids, source_db, dest_db):
     #insert_data(dest_db, rTree_tables[0], geo_data)
 
 def insert_data(con, table, contents):
+    if len(contents) == 0:
+        return
     print(f"Inserting {table}")
     placeholders = ','.join('?' * len(contents[0]))
     con.executemany(f"INSERT INTO {table} VALUES ({placeholders})", contents)
@@ -71,12 +74,12 @@ def insert_data(con, table, contents):
 def subset_table(table, ids, hydrofabric, subset_gpkg_name):    
     if table == "flowpath_edge_list":
         table = "network"
-    print(f"Subsetting {table}")
+    print(f"Subsetting {table} in {subset_gpkg_name}")
     source_db = sqlite3.connect(hydrofabric)
     dest_db = sqlite3.connect(subset_gpkg_name)
     ids = [f"'{x}'" for x in ids]
-    dest_db.enable_load_extension(True)
-    dest_db.load_extension('mod_spatialite')
+    # dest_db.enable_load_extension(True)
+    # dest_db.load_extension('mod_spatialite')
     # copy selected rows from source to destination
     sql_query = f"SELECT * FROM {table} WHERE id IN ({','.join(ids)})"
     contents = source_db.execute(sql_query).fetchall()
@@ -114,15 +117,16 @@ def create_subset_gpkg(ids, hydrofabric):
     output_dir.mkdir(parents=True, exist_ok=True)
     subset_gpkg_name = output_dir / f"{ids[0]}_subset.gpkg"
     if os.path.exists(subset_gpkg_name):
-        os.system(f"rm {subset_gpkg_name}*")
-    template = Path(__file__).parent / "data_sources"  / "template.gpkg"
-    os.system(f"cp {template} {subset_gpkg_name}")
+        os.remove(subset_gpkg_name)
+    template = Path(__file__).parent / "data_sources" / "template.gpkg"
+    print(f"Copying template {template} to {subset_gpkg_name}")
+    shutil.copy(template, subset_gpkg_name)
     triggers = remove_triggers(subset_gpkg_name)
     print(f"removed triggers from subset gpkg {subset_gpkg_name}")
-    print(f"triggers removed: {triggers}")
+    #print(f"triggers removed: {triggers}")
     subset_tables = ["divides", "nexus", "flowpaths", "flowpath_edge_list", "flowpath_attributes", "hydrolocations", "lakes"]
     for table in subset_tables:
-        subset_table(table, ids, hydrofabric, subset_gpkg_name)
+        subset_table(table, ids, hydrofabric, str(subset_gpkg_name.absolute()))
     add_triggers(triggers, subset_gpkg_name)
     return subset_gpkg_name
 
@@ -143,7 +147,7 @@ def subset_parquet(ids):
 
 def make_x_walk(hydrofabric, out_dir) -> None:
 
-    attributes = gpd.read_file(hydrofabric, layer="flowpath_attributes").set_index("id")
+    attributes = gpd.read_file(hydrofabric, layer="flowpath_attributes", engine="pyogrio").set_index("id")
     x_walk = pd.Series(attributes[~attributes["rl_gages"].isna()]["rl_gages"])
     data = {}
     for wb, gage in x_walk.items():
@@ -160,10 +164,10 @@ def read_layer(hydrofabric, layer):
 def make_geojson(hydrofabric: str) -> None:
     out_dir = Path(__file__).parent / "output" / hydrofabric.stem.replace("_subset", "")
     try:
-        catchments = gpd.read_file(hydrofabric, layer="divides")
-        nexuses = gpd.read_file(hydrofabric, layer="nexus")
-        flowpaths = gpd.read_file(hydrofabric, layer="flowpaths")
-        edge_list = gpd.read_file(hydrofabric, layer="flowpath_edge_list")
+        catchments = gpd.read_file(hydrofabric, layer="divides", engine="pyogrio")
+        nexuses = gpd.read_file(hydrofabric, layer="nexus", engine="pyogrio")
+        flowpaths = gpd.read_file(hydrofabric, layer="flowpaths", engine="pyogrio")
+        edge_list = gpd.read_file(hydrofabric, layer="flowpath_edge_list", engine="pyogrio")
         
         make_x_walk(hydrofabric, out_dir)
         catchments.to_file(out_dir / "catchments.geojson")
@@ -175,17 +179,33 @@ def make_geojson(hydrofabric: str) -> None:
         print(str(e))
         raise e
     
-def subset(hydrofabric: str, wb_ids: list[str]) -> None:
+def subset(hydrofabric: str, wb_ids: list[str]) -> str:
+    output_dir = Path(__file__).parent / "output" 
+    data_sources = Path(__file__).parent / "data_sources" 
+    hydrofabric = data_sources / hydrofabric
     graph = get_graph(hydrofabric)    
     upstream_ids = []
     for id in wb_ids:
         upstream_ids += get_upstream_ids(id, graph)
-    upstream_ids = list(set(upstream_ids))
+    upstream_ids = sorted(list(set(upstream_ids)))  # Sort the list
+    output_dir = output_dir / upstream_ids[0]
+    if output_dir.exists():
+        os.system(f"rm -rf {output_dir}")
     gpkg_name = create_subset_gpkg(upstream_ids, hydrofabric)
-    os.system(f"ogr2ogr -f GPKG new_{gpkg_name} {gpkg_name}")
-    os.system(f"rm {gpkg_name}* && mv new_{gpkg_name} {gpkg_name}")
+    output_gpkg = output_dir / gpkg_name
+    os.system(f"ogr2ogr -f GPKG {output_dir / 'temp.gpkg'} {output_gpkg}")
+    os.system(f"rm {output_gpkg}* && mv {output_dir / 'temp.gpkg'} {output_gpkg}")
     subset_parquet(upstream_ids)
     make_geojson(gpkg_name)
+    #make config subfolder and move files there
+    config_dir = output_dir / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    # get all files in output_dir
+    files = [x for x in output_dir.iterdir()]
+    for file in files:
+        if file.suffix in [".gpkg", ".csv", ".json", ".geojson"]:
+            os.system(f"mv {file} {config_dir}")
+    return str(output_dir.absolute())
 
 if __name__ == "__main__":
     output_dir = Path(__file__).parent / "output" 

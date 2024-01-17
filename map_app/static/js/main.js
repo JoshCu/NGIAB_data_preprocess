@@ -187,6 +187,42 @@ async function addLayers() {
     }));
 }
 
+async function subset() {
+    console.log('subsetting');
+    fetch('/subset', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(wb_id_dict),
+    })
+    .then(response => response.text())
+    .then(filename => {
+        console.log(filename);
+        // popup with the file name
+        document.getElementById('output-path').textContent = "subset to " + filename;        
+        })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+
+async function forcings() {
+    console.log('getting forcings');
+    fetch('/getforcings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: document.getElementById('selected-basins').textContent,
+    })
+    .then(response => response.json())
+    .then(filename => {
+        console.log(filename);
+        // popup with the file name
+        alert('subset to' + filename);        
+        })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+
 geometry_urls = {
     '16':  'e8ddee6a8a90484fa7a976458e79c0c3',
     '01':  '5f0e81c665314967a1e15e4ae672aaae',
@@ -244,4 +280,5 @@ addLayers();
 
 // Register the click event listener for the map
 map.on('click', onMapClick);
-
+// add listener for the #subset-button
+document.getElementById('subset-button').addEventListener('click', subset);

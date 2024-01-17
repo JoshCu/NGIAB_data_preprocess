@@ -7,12 +7,12 @@ import pandas as pd
 from pathlib import Path
 from shapely.geometry import Point
 from shapely.wkb import loads
-from shapely.ops import unary_union
+from shapely import unary_union
 import json
-from subset import get_upstream_ids, get_graph
+from subset import get_upstream_ids, get_graph, subset
 import sqlite3
-import os
-from functools import lru_cache
+from datetime import datetime
+
 
 main = Blueprint('main', __name__)
 
@@ -119,11 +119,7 @@ def blob_to_geometry(blob):
     geometry = loads(geom)
     return geometry
 
-
-def get_subset_gpkg(clicked_wb_id, geopackage):
-    graph = get_graph(geopackage)    
-    upstream_ids = get_upstream_ids(clicked_wb_id, graph)
-    upstream_ids = list(set(upstream_ids))
+def get_geodf_from_wb_ids(upstream_ids, geopackage):
     # format ids as ('id1', 'id2', 'id3')
     sql_query = f"SELECT id, geom FROM divides WHERE id IN {tuple(upstream_ids)}"
     # remove the trailing comma from single element tuples
@@ -134,22 +130,41 @@ def get_subset_gpkg(clicked_wb_id, geopackage):
     con.close()
     # convert the blobs to geometries
     geometry_list = []
+    print(f"sql returned at {datetime.now()}")
     for r in result:
         geometry = blob_to_geometry(r[1])
         if geometry is not None:
             geometry_list.append(geometry)
-    # merge the geometries into a single geometry with unary_union
+    print(f"converted blobs to geometries at {datetime.now()}")
+    # split geometries into chunks and run unary_union in parallel
     merged_geometry = unary_union(geometry_list)
     # create a geodataframe from the geometry
-    d = {'col1': [clicked_wb_id], 'geometry': [merged_geometry]}
+    d = {'col1': [upstream_ids[0]], 'geometry': [merged_geometry]}
     gdf = gpd.GeoDataFrame(d, crs="EPSG:5070")
     return gdf
         
 
 @main.route('/get_upstream_geojson_from_wbids', methods=['POST'])
-def get_upstream_geojson_from_wbids():    
-    wb_id = json.loads(request.data.decode('utf-8'))
+def get_upstream_geojson_from_wbids():
+    print(f"getting graph at {datetime.now()}")
+    wb_id = json.loads(request.data.decode('utf-8'))    
     geopackage = Path(__file__).parent.parent / "data_sources" / "conus.gpkg"
-    gdf = get_subset_gpkg(wb_id, geopackage)
+    graph = get_graph(geopackage)
+    print(f"got graph at {datetime.now()}")
+    upstream_ids = get_upstream_ids(wb_id, graph)
+    print(f"got upstream ids at {datetime.now()}")
+    upstream_ids = list(set(upstream_ids))
+    gdf = get_geodf_from_wb_ids(upstream_ids, geopackage)
+    print(f"got geodf at {datetime.now()}")
     gdf = gdf.to_crs(epsg=4326)
+    print(f"converted crs at {datetime.now()}")
     return gdf.to_json(), 200
+
+@main.route('/subset', methods=['POST'])
+def subset_selection():
+    wb_ids = list(json.loads(request.data.decode('utf-8')).keys())
+    print(wb_ids)
+    geopackage = "conus.gpkg"
+    # subset the geopackage
+    subset_geopackage = subset(geopackage, wb_ids)
+    return subset_geopackage, 200
