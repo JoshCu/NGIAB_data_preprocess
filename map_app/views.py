@@ -3,10 +3,14 @@ import geopandas as gpd
 import requests
 import re
 import math
+import pandas as pd
 from pathlib import Path
 from shapely.geometry import Point
+from shapely.wkb import loads
 import json
 from subset import get_upstream_ids, get_graph
+import sqlite3
+import os
 
 main = Blueprint('main', __name__)
 
@@ -93,22 +97,54 @@ def get_geojson_from_wbids():
         return wbids_to_geojson(wb_dict), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+def blob_to_geometry(blob):
+    # from http://www.geopackage.org/spec/#gpb_format
+    # byte 0-2 don't need
+    # byte 3 bit 0 (bit 24)= 0 for little endian, 1 for big endian (used for srs id and envelope type)
+    # byte 3 bit 1-3 (bit 25-27)= envelope type (needed to calculate envelope size)
+    # byte 3 bit 4 (bit 28)= empty geometry flag
+    envelope_type = (blob[3] & 14) >> 1
+    empty = (blob[3] & 16) >> 4
+    if empty:
+        return None
+    envelope_sizes = [0,32,48,48,64]
+    envelope_size = envelope_sizes[envelope_type]
+    header_byte_length = 8 + envelope_size
+    # everything after the header is the geometry
+    geom = blob[header_byte_length:]
+    # convert to hex
+    geometry = loads(geom)
+    return geometry
 
 
+def get_subset_gpkg(clicked_wb_ids, geopackage):
+    graph = get_graph(geopackage)    
+    upstream_ids = []
+    for wb_id in clicked_wb_ids:
+        upstream_ids = get_upstream_ids(wb_id, graph)
+    upstream_ids = list(set(upstream_ids))
+    # format ids as ('id1', 'id2', 'id3')
+    sql_query = f"SELECT id, geom FROM divides WHERE id IN {tuple(upstream_ids)}"
+    # remove the trailing comma from single element tuples
+    sql_query = sql_query.replace(",)", ")")
+    # would be nice to use geopandas here but it doesn't support sql on geopackages
+    con = sqlite3.connect(geopackage)
+    df = pd.read_sql_query(sql_query, con)
+    # convert every blob in the dataframe to a geometry
+    df['geom'] = df['geom'].apply(blob_to_geometry)
+    print(df)
+    gdf = gpd.GeoDataFrame(df, geometry='geom', crs="EPSG:5070")
+    print(gdf)
+    return gdf
+        
 
 @main.route('/get_upstream_geojson_from_wbids', methods=['POST'])
-def get_upstream_geojson_from_wbids():
-    
+def get_upstream_geojson_from_wbids():    
     wb_dict = json.loads(request.data.decode('utf-8'))
-    print(wb_dict)
     if len(wb_dict) == 0:
         return [], 204
     geopackage = Path(__file__).parent.parent / "data_sources" / "conus.gpkg"
-    graph = get_graph(geopackage)
-    # get upstream ids
-    # get nexus points wb flows to
-    # use nexus points as mask to load geojson
-    try:
-        return wbids_to_geojson(wb_dict), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    gdf = get_subset_gpkg(wb_dict.keys(), geopackage)
+    gdf = gdf.to_crs(epsg=4326)
+    return gdf.to_json(), 200

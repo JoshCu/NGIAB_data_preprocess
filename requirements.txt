@@ -1,0 +1,8 @@
+dask
+pyarrow
+pyogrio
+flask
+flask-cors
+geopandas
+requests
+igraph

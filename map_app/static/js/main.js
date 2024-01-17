@@ -52,12 +52,12 @@ async function populate_upstream() {
     .then(data => {
         // if the wb_id is already in the dict, remove the key
             // remove the old layer
-        if (selected_wb_layer){
-            map.removeLayer(selected_wb_layer);
+        if (upstream_wb_layer){
+            map.removeLayer(upstream_wb_layer);
         }
         console.log(data);
         // add the new layer
-        selected_wb_layer = L.geoJSON(data).addTo(map);
+        upstream_wb_layer = L.geoJSON(data).addTo(map);
         })
     .catch(error => {
         console.error('Error:', error);
@@ -85,8 +85,10 @@ function onMapClick(event) {
         if (data['wb_id'] in wb_id_dict){
             delete wb_id_dict[data['wb_id']];}
         else{
-        wb_id_dict[data['wb_id']] = [lat, lng];}
-        update_selected();
+            wb_id_dict[data['wb_id']] = [lat, lng];
+        }
+        console.log('clicked on wb_id: ' + data['wb_id'] + ' coords :' + lat + ', ' + lng);
+        //update_selected();
         populate_upstream();
         // Example: Add a marker at the clicked location
         // L.marker([lat, lng]).addTo(map)
@@ -104,7 +106,7 @@ function onMapClick(event) {
 
 async function get_boundary(vpu_code){
     // calculate the bounds from the grid bounds
-    const proxyUrl = 'http://localhost:5000/get_map_data';
+    const proxyUrl = '/get_map_data';
     url = baseUrl + vpu_code + '@png/18/0/0.png';
     // tile url will 404 if the tile doesn't exist, and then return the bounds in the body
     //e.g. Coverage [minx,miny,maxx,maxy] is [53410, 154705, 65609, 162724, 18], index [x,y,z] is [0, 0, 18]

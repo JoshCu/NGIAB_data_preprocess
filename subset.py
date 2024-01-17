@@ -39,11 +39,15 @@ def get_graph(geopackage_path: Path):
     print(network_graph.summary())
     return network_graph
 
-def get_upstream_ids(name, graph):
-    id = graph.vs.find(name=name).index
-    parents = graph.subcomponent(id, mode="in")
-    # get names of ids in parents
-    parent_names = [graph.vs[x]["name"] for x in parents]
+def get_upstream_ids(names, graph):
+    if type(names) == str:
+        names = [names]
+    parent_names = []
+    for name in names:
+        id = graph.vs.find(name=name).index
+        parents = graph.subcomponent(id, mode="in")
+        # get names of ids in parents
+        parent_names.extend([graph.vs[x]["name"] for x in parents])
     return parent_names
 
 def copy_rTree_tables(table, ids, source_db, dest_db):
@@ -52,7 +56,7 @@ def copy_rTree_tables(table, ids, source_db, dest_db):
     node_ids = [str(x[1]) for x in rowid_data]
     node_data = source_db.execute(f"SELECT * FROM {rTree_tables[2]} WHERE nodeno in ({','.join(node_ids)})").fetchall()
     parent_data = source_db.execute(f"SELECT * FROM {rTree_tables[3]} WHERE nodeno in ({','.join(node_ids)})").fetchall()
-    geo_data = source_db.execute(f"SELECT * FROM {rTree_tables[0]} WHERE id in ({','.join(ids)})").fetchall()
+    #geo_data = source_db.execute(f"SELECT * FROM {rTree_tables[0]} WHERE id in ({','.join(ids)})").fetchall()
     insert_data(dest_db, rTree_tables[2], node_data)
     insert_data(dest_db, rTree_tables[1], rowid_data)
     insert_data(dest_db, rTree_tables[3], parent_data)
@@ -80,7 +84,7 @@ def subset_table(table, ids, hydrofabric, subset_gpkg_name):
     if table  in ["divides", "flowpaths", "nexus", "hydrolocations", "lakes"]:
         copy_rTree_tables(table, ids, source_db, dest_db)
     # replace ids with new ids
-    new_contents = [[i+1, *x[2:]] for i, x in enumerate(contents)]
+    #new_contents = [[i+1, *x[2:]] for i, x in enumerate(contents)]
     print("inserting final data")
     if table == "network":
         table = "flowpath_edge_list"
