@@ -7,33 +7,24 @@ import geopandas
 import s3fs
 import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
-from dask.distributed import Client
+from dask.distributed import LocalCluster
 import rioxarray
 from geocube.api.core import make_geocube
 from pathlib import Path
 
 def start_dask_client():
-    try:
-        print(client.dashboard_link)
-    except:
-        client = Client(n_workers=8, memory_limit='10GB')
-        print(client.dashboard_link)
+    cluster = LocalCluster()
+    client = cluster.get_client()
     return client
 
 def get_forcing_zarr_urls():
     forcing_zarr_files = ["lwdown", "precip", "psfc", "q2d", "swdown", "t2d", "u2d", "v2d"]
     return [f"s3://noaa-nwm-retrospective-3-0-pds/CONUS/zarr/forcing/{f}.zarr" for f in forcing_zarr_files]
 
-def merge_zarr_stores(urls):
-    delayed_stores = [dask.delayed(xarray.open_zarr)(s3fs.S3Map(url, s3=s3fs.S3FileSystem(anon=True))) for url in urls]
-    return xarray.merge(dask.compute(*delayed_stores))
-
-def preprocess_dataset(ds, wb_id, start_time, end_time):
-    output_dir = Path(__file__).parent / "output" / wb_id / "config"
-    catchments = geopandas.read_file( output_dir / 'catchments.geojson')
-    xmin, ymin, xmax, ymax = catchments.total_bounds
+def merge_zarr_stores(urls, start_time, end_time):
     time_slice = slice(start_time, end_time)
-    return ds.sel(time=time_slice)
+    delayed_stores = [dask.delayed(lambda url: xarray.open_zarr(s3fs.S3Map(url, s3=s3fs.S3FileSystem(anon=True))).sel(time=time_slice))(url) for url in urls]
+    return xarray.merge(dask.compute(*delayed_stores))
 
 def add_spatial_metadata(ds):
     # Spatial metadata processing
@@ -90,7 +81,7 @@ def get_subset_geometries(wb_id):
     # prepare geometries for spatial averaging
     gdf = geopandas.read_file(output_dir / f'{wb_id.split("_")[0]}_subset.gpkg', layer='divides')
 
-    # convert these data into the projection of our forcing data
+    # convert this data into the projection of our forcing data
     target_crs = pyproj.Proj(proj='lcc',
                         lat_1=30.,
                         lat_2=60., 
@@ -121,7 +112,7 @@ def clip_dataset(ds, gdf):
     catchment_ids = numpy.unique(ds.cat.data[~numpy.isnan(ds.cat.data)])
 
     print(f'The dataset contains {len(catchment_ids)} catchments')
-    return catchment_ids
+    return catchment_ids, ds
 
 # distribute zonal stats to sub processes
 def perform_zonal_computation(ds, cat_id):
@@ -153,18 +144,22 @@ def compute_zonal_mean(ds, variable):
 def compute_zonal_stats(ds, gdf, catchment_ids, client):
     ds_subset = ds.chunk(chunks={'time': 1000})
     ds_subset = ds_subset.unify_chunks()
-    ds_subset.chunks
-    ds_subset = ds_subset.drop(['crs','lat','lon']) 
-    ds_subset = ds_subset.compute()
-    scattered_ds = client.scatter(ds_subset, broadcast=True)
-    delayed = []
+    ds_subset = ds_subset.drop_vars(['crs', 'lat', 'lon'])
 
+    first_scatter = client.scatter(ds_subset, broadcast=True)
+    first_scatter_computed = client.compute(first_scatter).result()
+    second_scatter = client.scatter(first_scatter_computed, broadcast=True)
+
+    delayed = []
     for cat_id in catchment_ids:
-        delay = dask.delayed(perform_zonal_computation)(scattered_ds, cat_id)
+        # Using the second scatter result in the delayed computation
+        delay = dask.delayed(perform_zonal_computation)(second_scatter, cat_id)
         delayed.append(delay)
 
     results = dask.compute(*delayed)
     return results
+
+
 
 def save_data_as_csv(results, start_time, end_time, wb_id, gdf):
     dates = pandas.date_range(start_time, end_time, freq="60min")
@@ -202,7 +197,8 @@ def save_data_as_csv(results, start_time, end_time, wb_id, gdf):
                                     'precip_rate']
 
             # write to file
-            with open(f'{wb_id}/forcings/{cat}.csv', 'w') as f:
+            curent_dir = Path(__file__).parent
+            with open(f'{curent_dir}/output/{wb_id}/forcings/{cat}.csv', 'w') as f:
                 # Note: saving "precip_rate" because this column exists in the example 
                 #       forcing files. It's not clear if this is being used or not.
                 df.to_csv(f,
@@ -222,11 +218,10 @@ def save_data_as_csv(results, start_time, end_time, wb_id, gdf):
 def create_forcings(start_time, end_time, wb_id):
     client = start_dask_client()
     urls = get_forcing_zarr_urls()
-    merged_store = merge_zarr_stores(urls)
-    ds = preprocess_dataset(merged_store, wb_id, start_time, end_time)
-    ds = add_spatial_metadata(ds)
+    merged_store = merge_zarr_stores(urls, start_time, end_time)
+    ds = add_spatial_metadata(merged_store)
     gdf = get_subset_geometries(wb_id)
-    catchment_ids = clip_dataset(ds, gdf)
+    catchment_ids, ds = clip_dataset(ds, gdf)
     results = compute_zonal_stats(ds, gdf, catchment_ids, client)
     save_data_as_csv(results, start_time, end_time, wb_id, gdf)
 
