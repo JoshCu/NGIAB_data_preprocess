@@ -41,6 +41,8 @@ async function update_selected() {
     .catch(error => {
         console.error('Error:', error);
     });
+    await populate_upstream();
+    document.getElementById('selected-basins').textContent = Object.keys(wb_id_dict).join(', ');
 }
 
 async function populate_upstream() {
