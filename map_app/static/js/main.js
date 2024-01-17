@@ -3,7 +3,7 @@
 // this is why I don't call myself a full stack developer
 var wb_id_dict = {};
 var selected_wb_layer = null;
-var upstream_wb_layer = null;
+var upstream_maps = {};
 
 async function update_selected() {
     console.log('updating selected');
@@ -28,7 +28,15 @@ async function update_selected() {
         }
         console.log(data);
         // add the new layer
-        selected_wb_layer = L.geoJSON(data).addTo(map);
+        selected_wb_layer = L.geoJSON(data, {
+            onEachFeature: colorlayer,
+            style: {
+                color: "#eb34d8",
+                opacity: 0.6,
+                fillColor: '#e0abff',
+                fillOpacity: 0
+            }
+        }).addTo(map);
         })
     .catch(error => {
         console.error('Error:', error);
@@ -37,32 +45,66 @@ async function update_selected() {
 
 async function populate_upstream() {
     console.log('populating upstream selected');
-    if (Object.keys(wb_id_dict).length === 0){
-        if (upstream_wb_layer){
-            map.removeLayer(upstream_wb_layer);}
+    // drop any key that is not in the wb_id_dict
+    for (const [key, value] of Object.entries(upstream_maps)) {
+        if (!(key in wb_id_dict)) {
+            map.removeLayer(value);
+            delete upstream_maps[key];
+        }
+    }
+    // add any key that is in the wb_id_dict but not in the upstream_maps
+    for (const [key, value] of Object.entries(wb_id_dict)) {
+        if (!(key in upstream_maps)) {
+            upstream_maps[key] = null;
+        }
+    }
+    if (Object.keys(upstream_maps).length === 0) {
         return;
     }
 
-    fetch('/get_upstream_geojson_from_wbids', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(wb_id_dict),
-    })
-    .then(response => response.json())
-    .then(data => {
-        // if the wb_id is already in the dict, remove the key
-            // remove the old layer
-        if (upstream_wb_layer){
-            map.removeLayer(upstream_wb_layer);
+    const fetchPromises = Object.entries(upstream_maps).map(([key, value]) => {
+        if (value === null) {
+            return fetch('/get_upstream_geojson_from_wbids', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ [key]: value }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                // if the wb_id is already in the dict, remove the key
+                // remove the old layer
+                if (upstream_maps[key]){
+                    map.removeLayer(upstream_maps[key]);
+                }
+                console.log(data);
+                // add the new layer
+                upstream_maps[key] = L.geoJSON(data).addTo(map);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
         }
-        console.log(data);
-        // add the new layer
-        upstream_wb_layer = L.geoJSON(data).addTo(map);
-        })
-    .catch(error => {
-        console.error('Error:', error);
+    });
+
+    await Promise.all(fetchPromises);
+    if (selected_wb_layer) {
+        selected_wb_layer.bringToFront();
+    }
+}
+
+function colorlayer(feature, layer) {
+    layer.on('mouseover', function (e) {
+        layer.setStyle({
+            fillOpacity: 0.4
+        });
+    });
+    layer.on('mouseout', function (e) {
+        layer.setStyle({
+            fillOpacity: 0.1
+        });
     });
 }
+
 
 function onMapClick(event) {
     // Extract the clicked coordinates
@@ -88,7 +130,7 @@ function onMapClick(event) {
             wb_id_dict[data['wb_id']] = [lat, lng];
         }
         console.log('clicked on wb_id: ' + data['wb_id'] + ' coords :' + lat + ', ' + lng);
-        //update_selected();
+        update_selected();
         populate_upstream();
         // Example: Add a marker at the clicked location
         // L.marker([lat, lng]).addTo(map)
@@ -200,3 +242,4 @@ addLayers();
 
 // Register the click event listener for the map
 map.on('click', onMapClick);
+

@@ -7,10 +7,12 @@ import pandas as pd
 from pathlib import Path
 from shapely.geometry import Point
 from shapely.wkb import loads
+from shapely.ops import unary_union
 import json
 from subset import get_upstream_ids, get_graph
 import sqlite3
 import os
+from functools import lru_cache
 
 main = Blueprint('main', __name__)
 
@@ -118,11 +120,9 @@ def blob_to_geometry(blob):
     return geometry
 
 
-def get_subset_gpkg(clicked_wb_ids, geopackage):
+def get_subset_gpkg(clicked_wb_id, geopackage):
     graph = get_graph(geopackage)    
-    upstream_ids = []
-    for wb_id in clicked_wb_ids:
-        upstream_ids = get_upstream_ids(wb_id, graph)
+    upstream_ids = get_upstream_ids(clicked_wb_id, graph)
     upstream_ids = list(set(upstream_ids))
     # format ids as ('id1', 'id2', 'id3')
     sql_query = f"SELECT id, geom FROM divides WHERE id IN {tuple(upstream_ids)}"
@@ -130,21 +130,26 @@ def get_subset_gpkg(clicked_wb_ids, geopackage):
     sql_query = sql_query.replace(",)", ")")
     # would be nice to use geopandas here but it doesn't support sql on geopackages
     con = sqlite3.connect(geopackage)
-    df = pd.read_sql_query(sql_query, con)
-    # convert every blob in the dataframe to a geometry
-    df['geom'] = df['geom'].apply(blob_to_geometry)
-    print(df)
-    gdf = gpd.GeoDataFrame(df, geometry='geom', crs="EPSG:5070")
-    print(gdf)
+    result = con.execute(sql_query).fetchall()
+    con.close()
+    # convert the blobs to geometries
+    geometry_list = []
+    for r in result:
+        geometry = blob_to_geometry(r[1])
+        if geometry is not None:
+            geometry_list.append(geometry)
+    # merge the geometries into a single geometry with unary_union
+    merged_geometry = unary_union(geometry_list)
+    # create a geodataframe from the geometry
+    d = {'col1': [clicked_wb_id], 'geometry': [merged_geometry]}
+    gdf = gpd.GeoDataFrame(d, crs="EPSG:5070")
     return gdf
         
 
 @main.route('/get_upstream_geojson_from_wbids', methods=['POST'])
 def get_upstream_geojson_from_wbids():    
-    wb_dict = json.loads(request.data.decode('utf-8'))
-    if len(wb_dict) == 0:
-        return [], 204
+    wb_id = json.loads(request.data.decode('utf-8'))
     geopackage = Path(__file__).parent.parent / "data_sources" / "conus.gpkg"
-    gdf = get_subset_gpkg(wb_dict.keys(), geopackage)
+    gdf = get_subset_gpkg(wb_id, geopackage)
     gdf = gdf.to_crs(epsg=4326)
     return gdf.to_json(), 200
