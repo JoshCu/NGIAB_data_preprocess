@@ -79,52 +79,44 @@ function queryLayer() {
     // add the layer to the map
 }
 
+var baseUrl = "http://geoserver.hydroshare.org/geoserver/gwc/service/tms/1.0.0/";  // Base URL of the WMTS service
 
+async function get_boundary(vpu_code){
+    // calculate the bounds from the grid bounds
+    const proxyUrl = 'http://localhost:5000/get_map_data';
+    url = baseUrl + vpu_code + '@png/18/0/0.png';
+    // tile url will 404 if the tile doesn't exist, and then return the bounds in the body
+    //e.g. Coverage [minx,miny,maxx,maxy] is [53410, 154705, 65609, 162724, 18], index [x,y,z] is [0, 0, 18]
 
-async function get_boundary(vpu_id){
-    //https://www.hydroshare.org/resource/e8ddee6a8a90484fa7a976458e79c0c3/
-    // #cov_northlimit # cov_southlimit # cov_eastlimit # cov_westlimit
-    // fetch the bounds then return them
-    url = "https://www.hydroshare.org/resource/" + vpu_id + "/"
-    let response = await fetch(url);
-    let data = await response.text();
-    let parser = new DOMParser();
-    let htmlDoc = parser.parseFromString(data, 'text/html');
-    let north = parseFloat(htmlDoc.getElementById("cov_northlimit").innerHTML.slice(0, -1));
-    let south = parseFloat(htmlDoc.getElementById("cov_southlimit").innerHTML.slice(0, -1));
-    let east = 2+parseFloat(htmlDoc.getElementById("cov_eastlimit").innerHTML.slice(0, -1));
-    let west = parseFloat(htmlDoc.getElementById("cov_westlimit").innerHTML.slice(0, -1));
-    // convert from EPSG:4326 to EPSG:900913
-    // console.log('bounds')
-    // console.log(north, east, south, west);
-    // southWest = proj4('EPSG:4326', 'EPSG:3857', [west, south]);
-    // northEast = proj4('EPSG:4326', 'EPSG:3857', [east, north]);
-    // console.log(southWest, northEast);
-    // north = northEast[1];
-    // east = northEast[0];
-    // south = southWest[1];
-    // west = southWest[0];
-    // console.log('bounds_end')
-    return L.latLngBounds(L.latLng(south, west), L.latLng(north, east));
-
+    try {
+        const response = await fetch(`${proxyUrl}?url=${encodeURIComponent(url)}`);
+        bounds = await response.json();
+    } catch (error) {
+        console.error('Error fetching boundary:', error);
+    }
+    // regex to find the bounds ([0-9]+,) match 0-4 are xmin, ymin, xmax, ymax
+    // convert to lat long
+    var xmin = bounds[0];
+    var ymin = bounds[1];
+    var xmax = bounds[2];
+    var ymax = bounds[3];
+    return L.latLngBounds(L.latLng(ymin, xmin), L.latLng(ymax, xmax));
 }
 
-var baseUrl = "https://geoserver.hydroshare.org/geoserver/gwc/service/tms/1.0.0/";  // Base URL of the WMTS service
-var layerName = "HS-35e8c6023c154b6298fcda280beda849:vpu_boundaries@EPSG:900913";  // Layer name
+var boundaries_of_vpus = "HS-35e8c6023c154b6298fcda280beda849:vpu_boundaries@EPSG:900913";
 
-var southWest = L.latLng(22.5470, -129.4137),
+southWest = L.latLng(22.5470, -129.4137),
 northEast = L.latLng(51.0159, -68.9337),
 bounds = L.latLngBounds(southWest, northEast);
 
 var wmtsLayer = L.tileLayer(baseUrl + 
-    layerName + '@png/{z}/{x}/{-y}.png', {
+    boundaries_of_vpus + '@png/{z}/{x}/{-y}.png', {
     attribution: '&copy; <a href="https://nationalmap.gov/">National Map</a> contributors',
     transparent: true,
     format: 'image/png',
     opacity: 0.8,
     maxZoom: 6,
-    bounds: bounds,
-    
+    bounds: bounds,    
 }).addTo(map);
 
 geometry_urls = {
@@ -153,11 +145,10 @@ geometry_urls = {
 }
 
 async function addLayers() {
-    await Promise.all(Object.keys(geometry_urls).map(async (key) => {
-        let bounds = await get_boundary(geometry_urls[key]);
-        console.log(bounds);
+    await Promise.all(Object.keys(geometry_urls).map(async (key) => {      
         var geometryUrl = 'HS-'+geometry_urls[key] + ':'+key+'_boundaries@EPSG:900913';
-        var layer = L.tileLayer(baseUrl + geometryUrl + '@png/{z}/{x}/{-y}.png', {
+        bounds = await get_boundary(geometryUrl);
+        L.tileLayer(baseUrl + geometryUrl + '@png/{z}/{x}/{-y}.png', {
             attribution: '&copy; <a href="https://nationalmap.gov/">National Map</a> contributors',
             transparent: true,
             format: 'image/png',
@@ -171,11 +162,6 @@ async function addLayers() {
 }
 
 addLayers();
-
-map.on('moveend zoomend', function() {
-    //queryLayer();
-});
-
 
 // Register the click event listener for the map
 map.on('click', onMapClick);
