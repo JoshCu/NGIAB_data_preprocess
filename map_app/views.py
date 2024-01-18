@@ -12,6 +12,7 @@ import json
 from subset import get_upstream_ids, get_graph, subset
 import sqlite3
 from datetime import datetime
+from create_forcing import create_forcings
 
 
 main = Blueprint('main', __name__)
@@ -168,3 +169,13 @@ def subset_selection():
     # subset the geopackage
     subset_geopackage = subset(geopackage, wb_ids)
     return subset_geopackage, 200
+
+@main.route('/forcings', methods=['POST'])
+def get_forcings():
+    #body: JSON.stringify({'forcing_dir': forcing_dir, 'start_time': start_time, 'end_time': end_time}),
+    data = json.loads(request.data.decode('utf-8'))
+    forcing_dir = data.get('forcing_dir').split('/')[-1]
+    start_time = data.get('start_time')
+    end_time = data.get('end_time')
+    # get the forcings
+    create_forcings(start_time, end_time, forcing_dir)

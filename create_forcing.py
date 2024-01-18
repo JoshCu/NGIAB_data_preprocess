@@ -5,17 +5,9 @@ import pyproj
 import pandas
 import geopandas
 import s3fs
-import matplotlib.pyplot as plt
-import xml.etree.ElementTree as ET
 from dask.distributed import LocalCluster
-import rioxarray
 from geocube.api.core import make_geocube
 from pathlib import Path
-
-def start_dask_client():
-    cluster = LocalCluster()
-    client = cluster.get_client()
-    return client
 
 def get_forcing_zarr_urls():
     forcing_zarr_files = ["lwdown", "precip", "psfc", "q2d", "swdown", "t2d", "u2d", "v2d"]
@@ -107,19 +99,19 @@ def clip_dataset(ds, gdf):
 
     # add the catchment variable to the original dataset
     ds = ds.assign_coords(cat = (['y','x'], out_grid.cat.data))
-
+    print(ds)
     # compute the unique catchment IDs which will be used to compute zonal statistics
     catchment_ids = numpy.unique(ds.cat.data[~numpy.isnan(ds.cat.data)])
-
+    print(ds)
+    print(catchment_ids)
     print(f'The dataset contains {len(catchment_ids)} catchments')
     return catchment_ids, ds
 
 # distribute zonal stats to sub processes
 def perform_zonal_computation(ds, cat_id):
-
+    ds.cat.compute()
     # subset by catchment id
     ds_catchment = ds.where(ds.cat==cat_id, drop=True)
-    
     delayed = []
     # loop over variables
     for variable in ['LWDOWN', 'PSFC',
@@ -141,25 +133,14 @@ def compute_zonal_mean(ds, variable):
     return {variable: ds.mean(dim=['x','y']).values}
 
 
-def compute_zonal_stats(ds, gdf, catchment_ids, client):
-    ds_subset = ds.chunk(chunks={'time': 1000})
-    ds_subset = ds_subset.unify_chunks()
-    ds_subset = ds_subset.drop_vars(['crs', 'lat', 'lon'])
-
-    first_scatter = client.scatter(ds_subset, broadcast=True)
-    first_scatter_computed = client.compute(first_scatter).result()
-    second_scatter = client.scatter(first_scatter_computed, broadcast=True)
-
-    delayed = []
-    for cat_id in catchment_ids:
-        # Using the second scatter result in the delayed computation
-        delay = dask.delayed(perform_zonal_computation)(second_scatter, cat_id)
-        delayed.append(delay)
-
-    results = dask.compute(*delayed)
+def compute_zonal_stats(ds, gdf, catchment_ids):
+    with LocalCluster().get_client() as client:    
+        ds_subset = ds.chunk(chunks={'time': 1000}).unify_chunks().drop_vars(['crs', 'lat', 'lon'])
+        scattered_ds = client.scatter(ds_subset, broadcast=True)
+        dask.compute(scattered_ds)
+        delayed = [dask.delayed(perform_zonal_computation)(scattered_ds, cat_id) for cat_id in catchment_ids]
+        results = dask.compute(*delayed)
     return results
-
-
 
 def save_data_as_csv(results, start_time, end_time, wb_id, gdf):
     dates = pandas.date_range(start_time, end_time, freq="60min")
@@ -216,13 +197,12 @@ def save_data_as_csv(results, start_time, end_time, wb_id, gdf):
                         columns = column_names)
 
 def create_forcings(start_time, end_time, wb_id):
-    client = start_dask_client()
     urls = get_forcing_zarr_urls()
     merged_store = merge_zarr_stores(urls, start_time, end_time)
     ds = add_spatial_metadata(merged_store)
     gdf = get_subset_geometries(wb_id)
     catchment_ids, ds = clip_dataset(ds, gdf)
-    results = compute_zonal_stats(ds, gdf, catchment_ids, client)
+    results = compute_zonal_stats(ds, gdf, catchment_ids)
     save_data_as_csv(results, start_time, end_time, wb_id, gdf)
 
 if __name__ == '__main__':

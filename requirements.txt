@@ -1,4 +1,4 @@
-dask
+dask[distributed]
 pyarrow
 pyogrio
 flask
@@ -6,3 +6,8 @@ flask-cors
 geopandas
 requests
 igraph
+s3fs
+geocube
+xarray
+zarr
+netcdf4
