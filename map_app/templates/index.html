@@ -29,22 +29,13 @@
     <div  id="time-warning"><h3>Make sure you have a date AND time, or else this won't work</h3></div> 
     <div>
         <label for="start-time">Start Time:</label>
-        <input type="datetime-local" id="start-time" name="start-time" onchange="updateInputValue('start-time')">
+        <input type="datetime-local" id="start-time" name="start-time" value ="1985-04-12T00:00:00Z" >
     </div>
     <div>
         <label for="end-time">End Time:</label>
-        <input type="datetime-local" id="end-time" name="end-time" onchange="updateInputValue('end-time')">
+        <input type="datetime-local" id="end-time" name="end-time" value ="1985-04-22T00:00:00Z">
     </div>
     <button id="forcings-button">Create Forcing From Zarrs</button>
-
-    <script>
-        function updateInputValue(inputId) {
-            var input = document.getElementById(inputId);
-            var value = input.value;
-            console.log('Input value changed:', value);
-            // Perform any additional logic or actions here
-        }
-    </script>
     <!-- Leaflet JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
     <script src="https://unpkg.com/esri-leaflet"></script>

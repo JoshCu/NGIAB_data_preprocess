@@ -12,7 +12,7 @@ import json
 from subset import get_upstream_ids, get_graph, subset
 import sqlite3
 from datetime import datetime
-from create_forcing import create_forcings
+#from create_forcing import create_forcings
 
 
 main = Blueprint('main', __name__)
@@ -178,4 +178,6 @@ def get_forcings():
     start_time = data.get('start_time')
     end_time = data.get('end_time')
     # get the forcings
+    start_time = datetime.strptime(start_time, '%Y-%m-%dT%H:%M')
+    end_time = datetime.strptime(end_time, '%Y-%m-%dT%H:%M')
     create_forcings(start_time, end_time, forcing_dir)
