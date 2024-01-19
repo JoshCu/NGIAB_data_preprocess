@@ -1,15 +1,9 @@
 import xarray
-import pandas
 import s3fs
 from pathlib import Path
 import geopandas as gpd
-import numpy as np
 import xarray as xr
-from rasterio.features import rasterize, bounds
-from rasterio import transform
 from pathlib import Path
-from math import floor, ceil
-import datetime
 import multiprocessing
 from functools import partial
 import json
@@ -18,27 +12,27 @@ from exactextract import exact_extract
 def get_zarr_stores(start_time, end_time):
     forcing_zarr_files = ["lwdown", "precip", "psfc", "q2d", "swdown", "t2d", "u2d", "v2d"]
     urls = [f"s3://noaa-nwm-retrospective-3-0-pds/CONUS/zarr/forcing/{f}.zarr" for f in forcing_zarr_files]
+    s3_file_stores = [s3fs.S3Map(url, s3=s3fs.S3FileSystem(anon=True)) for url in urls]
     time_slice = slice(start_time, end_time)
-    lazy_stores = [xarray.open_zarr(s3fs.S3Map(url, s3=s3fs.S3FileSystem(anon=True)), drop_variables=['crs']).sel(time=time_slice) for url in urls]
-    return lazy_stores
+    lazy_store = xarray.open_mfdataset(s3_file_stores, combine='by_coords', parallel=True, engine='zarr')
+    lazy_store = lazy_store.sel(time=time_slice)
+    return lazy_store
 
 def get_gdf(geopackage_path, projection):
     gdf = gpd.read_file(geopackage_path, layer='divides')
     gdf = gdf.to_crs(projection)
     return gdf
 
-def clip_stores_to_catchments(stores, bounds):
+def clip_stores_to_catchments(store, bounds):
      # clip stores to catchments
-    clipped_stores = []
-    print(bounds)
-    for store in stores:
-        clipped_store = store.sel(x=slice(bounds[0], bounds[2]), y=slice(bounds[1], bounds[3]))
-        clipped_stores.append(clipped_store)
-    return clipped_stores
+    clipped_store = store.sel(x=slice(bounds[0], bounds[2]), y=slice(bounds[1], bounds[3]))
+    return clipped_store
 
-def merge_stores(stores):
-    # merge stores
-    merged_data = xarray.merge(stores)
+def compute_store(stores):
+    # compute the store
+    merged_data = stores.compute()
+    # save the store locally
+    merged_data.to_netcdf('merged_data.nc')
     return merged_data
 
 def get_grid_file(grid_file):
@@ -56,25 +50,22 @@ def get_grid_file(grid_file):
     print(f'Projection: {projection}')
     return ds, projection
 
+def compute_and_save(raster, gdf, variable, time):
+    print(f'Computing {variable} for {time}')
+    results = exact_extract(raster, gdf, ['mean'], include_cols=['divide_id'])
+    with open(f'temp/{variable}_{time}.json', 'w') as f:
+        json.dump(results, f)
+
 def compute_zonal_stats(gdf, merged_data):
+    # desired output format
+    # one file per catchment
+    # csv with columns: time, LWDOWN, PSFC, Q2D, RAINRATE, SWDOWN, T2D, U2D, V2D
+    # exact extract works best with one timestep, lots of polygons
     print('Computing zonal stats')
     print(merged_data)
-    ds = merged_data['RAINRATE']
-    print(ds.time.values)
-    for i in ds.time.values:
-        # time stored as numpy.datetime64
-        print(i)
-        ds_frame = ds.sel(time=i)
-        results = exact_extract(ds_frame, gdf, ['mean'], include_cols=['divide_id'])
-        print(results)
-        break
-    with open('results.json', 'w') as f:
-        if iter(results):
-            for result in results:
-                f.write(result)
-                f.write('\n')
-        else:
-            f.write(results)
+    with multiprocessing.Pool() as pool:
+        results = pool.starmap(compute_and_save, [(merged_data[variable], gdf, variable, time) for variable in ['LWDOWN', 'PSFC','Q2D', 'RAINRATE', 'SWDOWN', 'T2D', 'U2D', 'V2D'] for time in merged_data.time.values])
+        # write the results in parallel too
     return results
 
 
@@ -82,17 +73,24 @@ def create_forcings(start_time, end_time, wb_id):
     data_directory = Path(__file__).parent / 'output' / wb_id / 'config'
     geopackage_path = data_directory / f'{wb_id}_subset.gpkg'
     template_file = Path(__file__).parent / 'data_sources' / 'template.nc'
-    lazy_stores = get_zarr_stores(start_time, end_time)
+    
+    #lazy_store = get_zarr_stores(start_time, end_time)
+    print('Got zarr stores')
     df, projection = get_grid_file(template_file)
+    print('Got grid file')
     gdf = get_gdf(geopackage_path, projection)
-    clipped_stores = clip_stores_to_catchments(lazy_stores, gdf.total_bounds)
-    merged_data = merge_stores(clipped_stores)
+    print('Got gdf')
+    #clipped_store = clip_stores_to_catchments(lazy_store, gdf.total_bounds)
+    print('Clipped stores')
+    #merged_data = compute_store(clipped_store)
+    print('Computed store')
+    merged_data = xr.open_dataset('merged_data.nc')
     results = compute_zonal_stats(gdf, merged_data)
     #save_data_as_csv(results, start_time, end_time, wb_id, gdf)
 
 
 if __name__ == '__main__':
     start_time = '2010-01-01 00:00'
-    end_time = '2010-01-10 00:00'
+    end_time = '2010-01-01 05:00'
     wb_id = 'wb-1643991'
     create_forcings(start_time, end_time, wb_id)
