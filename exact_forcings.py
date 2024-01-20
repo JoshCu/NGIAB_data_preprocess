@@ -38,20 +38,6 @@ def compute_store(stores):
     merged_data.to_netcdf('merged_data.nc')
     return merged_data
 
-def get_grid_file(grid_file):
-    try:
-        ds = xr.open_dataset(grid_file,engine='netcdf4')
-        try:
-            projection = ds.crs.esri_pe_string
-        except:
-            try:
-                projection = ds.ProjectionCoordinateSystem.esri_pe_string
-            except:
-                raise Exception(f'\n\nCan\'t find projection!\n')
-    except:
-        raise Exception(f'\n\nThere\'s a problem with {grid_file}!\n')
-    print(f'Projection: {projection}')
-    return ds, projection
 
 def compute_and_save(rasters, gdf, time, variable):
     raster=rasters[variable]
@@ -73,7 +59,6 @@ def split_csv_file(file_to_split, timestep):
     datestring = datetime.strptime(timestep.split('/')[-1].split('.')[0], '%Y%m%d%H%M')
     output_directory = 'temp/by_catchment/'
     command = f"""awk -F, 'NR > 1 {{output="{datestring}"; for(i=2; i<=NF; i++) output = output ", " $i; print output >> "{output_directory}"$1".csv"}}' {file_to_split}"""
-    print(command)
     os.system(f'{command}')
 
 def compute_zonal_stats(gdf, merged_data):
@@ -117,22 +102,23 @@ def create_forcings(start_time, end_time, wb_id):
     geopackage_path = data_directory / f'{wb_id}_subset.gpkg'
     template_file = Path(__file__).parent / 'data_sources' / 'template.nc'
     
-    lazy_store = get_zarr_stores(start_time, end_time)
+    #lazy_store = get_zarr_stores(start_time, end_time)
     print('Got zarr stores')
-    df, projection = get_grid_file(template_file)
+    projection = xr.open_dataset(template_file,engine='netcdf4').crs.esri_pe_string
     print('Got grid file')
     gdf = get_gdf(geopackage_path, projection)
     print('Got gdf')
-    clipped_store = clip_stores_to_catchments(lazy_store, gdf.total_bounds)
+    #clipped_store = clip_stores_to_catchments(lazy_store, gdf.total_bounds)
     print('Clipped stores')
-    merged_data = compute_store(clipped_store)
+    #merged_data = compute_store(clipped_store)
     print('Computed store')
-    #merged_data = xr.open_dataset('merged_data.nc')
+    merged_data = xr.open_dataset('merged_data.nc')
     compute_zonal_stats(gdf, merged_data)
-
+    
 
 if __name__ == '__main__':
     start_time = '2010-01-01 00:00'
     end_time = '2010-01-10 00:00'
     wb_id = 'wb-1643991'
     create_forcings(start_time, end_time, wb_id)
+    #takes 9m21s on i9-10850k 20 cores
