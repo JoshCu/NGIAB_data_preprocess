@@ -8,6 +8,7 @@ import multiprocessing
 from functools import partial
 import json
 from exactextract import exact_extract
+from datetime import datetime
 
 def get_zarr_stores(start_time, end_time):
     forcing_zarr_files = ["lwdown", "precip", "psfc", "q2d", "swdown", "t2d", "u2d", "v2d"]
@@ -51,10 +52,15 @@ def get_grid_file(grid_file):
     return ds, projection
 
 def compute_and_save(raster, gdf, variable, time):
-    print(f'Computing {variable} for {time}')
+    #print(f'Computing {variable} for {time}')
     results = exact_extract(raster, gdf, ['mean'], include_cols=['divide_id'])
     with open(f'temp/{variable}_{time}.json', 'w') as f:
         json.dump(results, f)
+    stats = {}
+    for item in results:
+        stats[item['properties']['divide_id']] = item['properties']['mean']
+
+    return {str(time):{variable:stats}}
 
 def compute_zonal_stats(gdf, merged_data):
     # desired output format
@@ -64,9 +70,13 @@ def compute_zonal_stats(gdf, merged_data):
     print('Computing zonal stats')
     print(merged_data)
     with multiprocessing.Pool() as pool:
-        results = pool.starmap(compute_and_save, [(merged_data[variable], gdf, variable, time) for variable in ['LWDOWN', 'PSFC','Q2D', 'RAINRATE', 'SWDOWN', 'T2D', 'U2D', 'V2D'] for time in merged_data.time.values])
-        # write the results in parallel too
-    return results
+        results = pool.starmap(compute_and_save, [(merged_data[variable].sel(time=time), gdf, variable, time) for variable in ['LWDOWN', 'PSFC','Q2D', 'RAINRATE', 'SWDOWN', 'T2D', 'U2D', 'V2D'] for time in merged_data.time.values])
+        # merge the results dicts into one dict
+        r = {}
+        for i in results:
+            r.update(i)
+        print(r)
+    return r
 
 
 def create_forcings(start_time, end_time, wb_id):
@@ -86,6 +96,8 @@ def create_forcings(start_time, end_time, wb_id):
     print('Computed store')
     merged_data = xr.open_dataset('merged_data.nc')
     results = compute_zonal_stats(gdf, merged_data)
+    with open('results.json', 'w') as f:
+        json.dump(results, f)
     #save_data_as_csv(results, start_time, end_time, wb_id, gdf)
 
 
