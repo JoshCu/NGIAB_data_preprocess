@@ -10,6 +10,7 @@ import pandas as pd
 import json
 from exactextract import exact_extract
 from datetime import datetime
+import os
 
 def get_zarr_stores(start_time, end_time):
     forcing_zarr_files = ["lwdown", "precip", "psfc", "q2d", "swdown", "t2d", "u2d", "v2d"]
@@ -60,8 +61,20 @@ def compute_and_save(rasters, gdf, time, variable):
     results = results.set_index('divide_id')
     # make the column name the variable name
     results.columns = [variable]
-    results.to_csv(f'temp/{variable}_{time}.csv')
+    if variable == 'RAINRATE': 
+        # this is wrong, todo https://github.com/NOAA-OWP/ngen/issues/509#issuecomment-1504087458
+        # should use RAINRATE from previous timestep,         chose this   VVVVV   density factor  at random
+        results['APCP_surface'] = (results['RAINRATE'] * 3600 * 1000) / 0.998
+        
+    results.to_csv(f'temp/star_map/{variable}_{time}.csv')
     return results
+
+def split_csv_file(file_to_split, timestep):
+    datestring = datetime.strptime(timestep.split('/')[-1].split('.')[0], '%Y%m%d%H%M')
+    output_directory = 'temp/by_catchment/'
+    command = f"""awk -F, 'NR > 1 {{output="{datestring}"; for(i=2; i<=NF; i++) output = output ", " $i; print output >> "{output_directory}"$1".csv"}}' {file_to_split}"""
+    print(command)
+    os.system(f'{command}')
 
 def compute_zonal_stats(gdf, merged_data):
     # desired output format
@@ -76,41 +89,50 @@ def compute_zonal_stats(gdf, merged_data):
             raster = merged_data.sel(time=time)
             timestep_result = pool.map(partial(compute_and_save,raster, gdf, time), ['LWDOWN', 'PSFC','Q2D', 'RAINRATE', 'SWDOWN', 'T2D', 'U2D', 'V2D'])
             timestep_result = pd.concat(timestep_result, axis=1)
-            timestring = datetime.strftime(pd.to_datetime(str(time)), '%Y%m%d_%H%M')
+            timestring = datetime.strftime(pd.to_datetime(str(time)), '%Y%m%d%H%M')
             timestep_result.to_csv(f'temp/by_time/{timestring}.csv')
-            all_dfs.append(timestep_result)
-        # merge the results dicts into one dict      
-    # use awk to pivot the csvs to be one per catchment
-    # awk -F, '{print > "temp/by_cat/"$1".csv"}' temp/by_time/*.csv
-    for df in all_dfs:
-        pd.concat(all_dfs, axis=1).to_csv('results.csv')
-        
-        
-    return "errr"
 
+    catchment_ids = gdf['divide_id'].unique()
+
+    # clear catchment files
+    for file in os.listdir('temp/by_catchment'):
+        os.remove('temp/by_catchment/' + file)
+
+    for cat in catchment_ids:
+        with open(f'temp/by_catchment/{cat}.csv', 'w') as f:
+            # do some renaming here 
+            #   divide_id, LWDOWN,        PSFC,         Q2D,                RAINRATE,    APCP_surface, SWDOWN,        T2D,               U2D,                 V2D
+            f.write('time, DLWRF_surface, PRES_surface, SPFH_2maboveground, precip_rate, APCP_surface, DSWRF_surface, TMP_2maboveground, UGRD_10maboveground, VGRD_10maboveground\n')
+
+    # use awk to pivot the csvs to be one per catchment
+    for timestep_file in sorted(os.listdir('temp/by_time')):
+        split_csv_file('temp/by_time/' + timestep_file, timestep_file)
+
+    # remove files in the start_map directory
+    for file in os.listdir('temp/star_map'):
+        os.remove('temp/star_map/' + file)
 
 def create_forcings(start_time, end_time, wb_id):
     data_directory = Path(__file__).parent / 'output' / wb_id / 'config'
     geopackage_path = data_directory / f'{wb_id}_subset.gpkg'
     template_file = Path(__file__).parent / 'data_sources' / 'template.nc'
     
-    #lazy_store = get_zarr_stores(start_time, end_time)
+    lazy_store = get_zarr_stores(start_time, end_time)
     print('Got zarr stores')
     df, projection = get_grid_file(template_file)
     print('Got grid file')
     gdf = get_gdf(geopackage_path, projection)
     print('Got gdf')
-    #clipped_store = clip_stores_to_catchments(lazy_store, gdf.total_bounds)
+    clipped_store = clip_stores_to_catchments(lazy_store, gdf.total_bounds)
     print('Clipped stores')
-    #merged_data = compute_store(clipped_store)
+    merged_data = compute_store(clipped_store)
     print('Computed store')
-    merged_data = xr.open_dataset('merged_data.nc')
+    #merged_data = xr.open_dataset('merged_data.nc')
     compute_zonal_stats(gdf, merged_data)
-    #save_data_as_csv(results, start_time, end_time, wb_id, gdf)
 
 
 if __name__ == '__main__':
     start_time = '2010-01-01 00:00'
-    end_time = '2010-01-01 05:00'
+    end_time = '2010-01-10 00:00'
     wb_id = 'wb-1643991'
     create_forcings(start_time, end_time, wb_id)
