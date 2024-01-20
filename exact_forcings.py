@@ -6,6 +6,7 @@ import xarray as xr
 from pathlib import Path
 import multiprocessing
 from functools import partial
+import pandas as pd
 import json
 from exactextract import exact_extract
 from datetime import datetime
@@ -51,16 +52,16 @@ def get_grid_file(grid_file):
     print(f'Projection: {projection}')
     return ds, projection
 
-def compute_and_save(raster, gdf, variable, time):
+def compute_and_save(rasters, gdf, time, variable):
+    raster=rasters[variable]
     #print(f'Computing {variable} for {time}')
-    results = exact_extract(raster, gdf, ['mean'], include_cols=['divide_id'])
-    with open(f'temp/{variable}_{time}.json', 'w') as f:
-        json.dump(results, f)
-    stats = {}
-    for item in results:
-        stats[item['properties']['divide_id']] = item['properties']['mean']
-
-    return {str(time):{variable:stats}}
+    results = exact_extract(raster, gdf, ['mean'], include_cols=['divide_id'], output='pandas')
+    # make divide_id the index
+    results = results.set_index('divide_id')
+    # make the column name the variable name
+    results.columns = [variable]
+    results.to_csv(f'temp/{variable}_{time}.csv')
+    return results
 
 def compute_zonal_stats(gdf, merged_data):
     # desired output format
@@ -69,14 +70,23 @@ def compute_zonal_stats(gdf, merged_data):
     # exact extract works best with one timestep, lots of polygons
     print('Computing zonal stats')
     print(merged_data)
+    all_dfs = []
     with multiprocessing.Pool() as pool:
-        results = pool.starmap(compute_and_save, [(merged_data[variable].sel(time=time), gdf, variable, time) for variable in ['LWDOWN', 'PSFC','Q2D', 'RAINRATE', 'SWDOWN', 'T2D', 'U2D', 'V2D'] for time in merged_data.time.values])
-        # merge the results dicts into one dict
-        r = {}
-        for i in results:
-            r.update(i)
-        print(r)
-    return r
+        for time in merged_data.time.values:
+            raster = merged_data.sel(time=time)
+            timestep_result = pool.map(partial(compute_and_save,raster, gdf, time), ['LWDOWN', 'PSFC','Q2D', 'RAINRATE', 'SWDOWN', 'T2D', 'U2D', 'V2D'])
+            timestep_result = pd.concat(timestep_result, axis=1)
+            timestring = datetime.strftime(pd.to_datetime(str(time)), '%Y%m%d_%H%M')
+            timestep_result.to_csv(f'temp/by_time/{timestring}.csv')
+            all_dfs.append(timestep_result)
+        # merge the results dicts into one dict      
+    # use awk to pivot the csvs to be one per catchment
+    # awk -F, '{print > "temp/by_cat/"$1".csv"}' temp/by_time/*.csv
+    for df in all_dfs:
+        pd.concat(all_dfs, axis=1).to_csv('results.csv')
+        
+        
+    return "errr"
 
 
 def create_forcings(start_time, end_time, wb_id):
@@ -95,9 +105,7 @@ def create_forcings(start_time, end_time, wb_id):
     #merged_data = compute_store(clipped_store)
     print('Computed store')
     merged_data = xr.open_dataset('merged_data.nc')
-    results = compute_zonal_stats(gdf, merged_data)
-    with open('results.json', 'w') as f:
-        json.dump(results, f)
+    compute_zonal_stats(gdf, merged_data)
     #save_data_as_csv(results, start_time, end_time, wb_id, gdf)
 
 
