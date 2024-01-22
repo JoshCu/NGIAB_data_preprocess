@@ -5,7 +5,9 @@ import geopandas as gpd
 import xarray as xr
 from pathlib import Path
 import multiprocessing
+from functools import partial
 import pandas as pd
+import json
 from exactextract import exact_extract
 from datetime import datetime
 import os
@@ -36,7 +38,8 @@ def compute_store(stores):
     merged_data.to_netcdf('merged_data.nc')
     return merged_data
 
-def compute_and_save(gdf, time, variable, rasters):
+
+def compute_and_save(rasters, gdf, time, variable):
     raster=rasters[variable]
     #print(f'Computing {variable} for {time}')
     results = exact_extract(raster, gdf, ['mean'], include_cols=['divide_id'], output='pandas')
@@ -66,17 +69,13 @@ def compute_zonal_stats(gdf, merged_data):
     print('Computing zonal stats')
     print(merged_data)
     all_dfs = []
-    function_calls = []
     with multiprocessing.Pool() as pool:
         for time in merged_data.time.values:
             raster = merged_data.sel(time=time)
-            for variable in ['LWDOWN', 'PSFC','Q2D', 'RAINRATE', 'SWDOWN', 'T2D', 'U2D', 'V2D']:
-                run =  [gdf, time, variable, raster]
-                function_calls.append(run)
-        timestep_result = pool.starmap(compute_and_save, function_calls)
-        timestep_result = pd.concat(timestep_result, axis=1)
-        timestring = datetime.strftime(pd.to_datetime(str(time)), '%Y%m%d%H%M')
-        timestep_result.to_csv(f'temp/by_time/{timestring}.csv')
+            timestep_result = pool.map(partial(compute_and_save,raster, gdf, time), ['LWDOWN', 'PSFC','Q2D', 'RAINRATE', 'SWDOWN', 'T2D', 'U2D', 'V2D'])
+            timestep_result = pd.concat(timestep_result, axis=1)
+            timestring = datetime.strftime(pd.to_datetime(str(time)), '%Y%m%d%H%M')
+            timestep_result.to_csv(f'temp/by_time/{timestring}.csv')
 
     catchment_ids = gdf['divide_id'].unique()
 
