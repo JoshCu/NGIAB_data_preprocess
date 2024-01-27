@@ -12,9 +12,8 @@ from shapely import unary_union
 from shapely.geometry import Point
 from shapely.wkb import loads
 
-from subset import get_graph, get_upstream_ids, subset
-
-# from create_forcing import create_forcings
+from data_processing.subset import get_graph, get_upstream_ids, subset
+from data_processing.forcings import create_forcings
 
 
 main = Blueprint("main", __name__)
@@ -175,9 +174,7 @@ def get_upstream_geojson_from_wbids():
 def subset_selection():
     wb_ids = list(json.loads(request.data.decode("utf-8")).keys())
     print(wb_ids)
-    geopackage = "conus.gpkg"
-    # subset the geopackage
-    subset_geopackage = subset(geopackage, wb_ids)
+    subset_geopackage = subset(wb_ids)
     return subset_geopackage, 200
 
 
@@ -192,3 +189,4 @@ def get_forcings():
     start_time = datetime.strptime(start_time, "%Y-%m-%dT%H:%M")
     end_time = datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
     create_forcings(start_time, end_time, forcing_dir)
+    return "success", 200

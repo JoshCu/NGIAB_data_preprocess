@@ -8,10 +8,30 @@ import geopandas as gpd
 import igraph as ig
 import pandas as pd
 import pyarrow.parquet as pq
+from dataclasses import dataclass
 
 triggers = None
 
-data_sources = Path(__file__).parent / "data_sources"
+@dataclass
+class file_paths:
+    @staticmethod
+    def data_sources():
+        return Path(__file__).parent.parent / "data_sources"
+    @staticmethod
+    def root_output_dir():
+        return Path(__file__).parent.parent / "output"
+    @staticmethod
+    def template():
+        return file_paths.data_sources() / "template.gpkg"
+    @staticmethod
+    def parquet():
+        return file_paths.data_sources() / "conus_model_attributes.parquet"
+    @staticmethod
+    def conus_hydrofabric():
+        return file_paths.data_sources() / "conus.gpkg"
+    @staticmethod
+    def hydrofabric_graph():
+        return file_paths.conus_hydrofabric().with_suffix(".gpickle")
 
 
 def create_graph_from_gpkg(hydrofabric: Path):
@@ -27,25 +47,28 @@ def create_graph_from_gpkg(hydrofabric: Path):
     return network_graph
 
 
-def get_graph(geopackage_path: Path):
-    gpickle_path = geopackage_path.with_suffix(".gpickle")
+def get_graph():
+    pickled_graph_path = file_paths.hydrofabric_graph()
     network_graph = ig.Graph()
-    if not gpickle_path.exists():
+    if not pickled_graph_path.exists():
         # get data needed to construct the graph
-        network_graph = create_graph_from_gpkg(geopackage_path)
+        network_graph = create_graph_from_gpkg(file_paths.conus_hydrofabric())
         # save the graph
-        network_graph.write_pickle(gpickle_path)
+        network_graph.write_pickle(pickled_graph_path)
 
-    network_graph = network_graph.Read_Pickle(gpickle_path)
+    network_graph = network_graph.Read_Pickle(pickled_graph_path)
     print(network_graph.summary())
     return network_graph
 
 
 def get_upstream_ids(names, graph):
+    print(f"Getting upstream ids for {names}")
     if type(names) == str:
         names = [names]
     parent_names = []
+    print(f"Getting upstream ids for {names}")
     for name in names:
+        print(f"Getting upstream ids for {name}")
         id = graph.vs.find(name=name).index
         parents = graph.subcomponent(id, mode="in")
         # get names of ids in parents
@@ -126,12 +149,12 @@ def add_triggers(triggers, dest_db):
 
 
 def create_subset_gpkg(ids, hydrofabric):
-    output_dir = Path(__file__).parent / "output" / ids[0]
+    output_dir = file_paths.root_output_dir() / ids[0]
     output_dir.mkdir(parents=True, exist_ok=True)
     subset_gpkg_name = output_dir / f"{ids[0]}_subset.gpkg"
     if os.path.exists(subset_gpkg_name):
         os.remove(subset_gpkg_name)
-    template = Path(__file__).parent / "data_sources" / "template.gpkg"
+    template = file_paths.template()
     print(f"Copying template {template} to {subset_gpkg_name}")
     shutil.copy(template, subset_gpkg_name)
     triggers = remove_triggers(subset_gpkg_name)
@@ -154,10 +177,8 @@ def create_subset_gpkg(ids, hydrofabric):
 
 def subset_parquet(ids):
     cat_ids = [x.replace("wb", "cat") for x in ids if x.startswith("wb")]
-    parquet_file = f"conus_model_attributes.parquet"
-    # get absolute path
-    parquet_path = Path(__file__).parent.absolute() / "data_sources" / parquet_file
-    output_dir = Path(__file__).parent / "output" / ids[0]
+    parquet_path = file_paths.parquet()
+    output_dir = file_paths.root_output_dir() / ids[0]
     print(str(parquet_path))
     model_attributes = pq.ParquetDataset(str(parquet_path)).read_pandas().to_pandas()
     model_attributes = model_attributes.set_index("divide_id").loc[cat_ids]
@@ -184,7 +205,7 @@ def read_layer(hydrofabric, layer):
 
 
 def make_geojson(hydrofabric: str) -> None:
-    out_dir = Path(__file__).parent / "output" / hydrofabric.stem.replace("_subset", "")
+    out_dir = file_paths.root_output_dir() / hydrofabric.stem.replace("_subset", "")
     try:
         catchments = gpd.read_file(hydrofabric, layer="divides", engine="pyogrio")
         nexuses = gpd.read_file(hydrofabric, layer="nexus", engine="pyogrio")
@@ -202,58 +223,56 @@ def make_geojson(hydrofabric: str) -> None:
         raise e
 
 
-def subset(hydrofabric: str, wb_ids: list[str]) -> str:
-    output_dir = Path(__file__).parent / "output"
-    data_sources = Path(__file__).parent / "data_sources"
-    hydrofabric = data_sources / hydrofabric
-    graph = get_graph(hydrofabric)
+def subset(wb_ids: list[str], hydrofabric: str = file_paths.conus_hydrofabric()) -> str:
+    if type(wb_ids) == str:
+        wb_ids = [wb_ids]
+    graph = get_graph()
     upstream_ids = []
     for id in wb_ids:
         upstream_ids += get_upstream_ids(id, graph)
     upstream_ids = sorted(list(set(upstream_ids)))  # Sort the list
-    output_dir = output_dir / upstream_ids[0]
-    if output_dir.exists():
-        os.system(f"rm -rf {output_dir}")
+    subset_output_dir = file_paths.root_output_dir() / upstream_ids[0]
+    if subset_output_dir.exists():
+        os.system(f"rm -rf {subset_output_dir}")
     gpkg_name = create_subset_gpkg(upstream_ids, hydrofabric)
-    output_gpkg = output_dir / gpkg_name
-    os.system(f"ogr2ogr -f GPKG {output_dir / 'temp.gpkg'} {output_gpkg}")
-    os.system(f"rm {output_gpkg}* && mv {output_dir / 'temp.gpkg'} {output_gpkg}")
+    output_gpkg = subset_output_dir / gpkg_name
+    os.system(f"ogr2ogr -f GPKG {subset_output_dir / 'temp.gpkg'} {output_gpkg}")
+    os.system(f"rm {output_gpkg}* && mv {subset_output_dir / 'temp.gpkg'} {output_gpkg}")
     subset_parquet(upstream_ids)
     make_geojson(gpkg_name)
     # make config subfolder and move files there
-    config_dir = output_dir / "config"
+    config_dir = subset_output_dir / "config"
     config_dir.mkdir(parents=True, exist_ok=True)
     # get all files in output_dir
-    files = [x for x in output_dir.iterdir()]
+    files = [x for x in subset_output_dir.iterdir()]
     for file in files:
         if file.suffix in [".gpkg", ".csv", ".json", ".geojson"]:
             os.system(f"mv {file} {config_dir}")
-    return str(output_dir.absolute())
+    return str(subset_output_dir.absolute())
 
 
-if __name__ == "__main__":
-    output_dir = Path(__file__).parent / "output"
-    data_sources = Path(__file__).parent / "data_sources"
-    hydrofabric = data_sources / "conus.gpkg"
-    print("Getting Graph")
-    graph = get_graph(hydrofabric)
-    print("Getting Upstream IDs")
-    upstream_ids = get_upstream_ids("wb-1643991", graph)
-    output_dir = output_dir / upstream_ids[0]
-    if output_dir.exists():
-        os.system(f"rm -rf {output_dir}")
-    print("Creating Subset GPKG")
-    gpkg_name = create_subset_gpkg(upstream_ids, hydrofabric)
-    output_gpkg = output_dir / gpkg_name
-    os.system(f"ogr2ogr -f GPKG {output_dir / 'temp.gpkg'} {output_gpkg}")
-    os.system(f"rm {output_gpkg}* && mv {output_dir / 'temp.gpkg'} {output_gpkg}")
-    subset_parquet(upstream_ids)
-    make_geojson(gpkg_name)
-    # make config subfolder and move files there
-    config_dir = output_dir / "config"
-    config_dir.mkdir(parents=True, exist_ok=True)
-    # get all files in output_dir
-    files = [x for x in output_dir.iterdir()]
-    for file in files:
-        if file.suffix in [".gpkg", ".csv", ".json", ".geojson"]:
-            os.system(f"mv {file} {config_dir}")
+# if __name__ == "__main__":
+#     hydrofabric = data_sources / "conus.gpkg"
+#     print("Getting Graph")
+#     graph = get_graph(hydrofabric)
+#     print("Getting Upstream IDs")
+#     upstream_ids = get_upstream_ids("wb-1643991", graph)
+#     output_dir = root_output_dir / upstream_ids[0]
+#     if output_dir.exists():
+#         os.system(f"rm -rf {output_dir}")
+#     print("Creating Subset GPKG")
+#     gpkg_name = create_subset_gpkg(upstream_ids, hydrofabric)
+#     output_gpkg = output_dir / gpkg_name
+#     os.system(f"ogr2ogr -f GPKG {output_dir / 'temp.gpkg'} {output_gpkg}")
+#     os.system(f"rm {output_gpkg}* && mv {output_dir / 'temp.gpkg'} {output_gpkg}")
+#     subset_parquet(upstream_ids)
+#     make_geojson(gpkg_name)
+#     # make config subfolder and move files there
+#     config_dir = output_dir / "config"
+#     config_dir.mkdir(parents=True, exist_ok=True)
+#     # get all files in output_dir
+#     files = [x for x in output_dir.iterdir()]
+#     for file in files:
+#         if file.suffix in [".gpkg", ".csv", ".json", ".geojson"]:
+#             os.system(f"mv {file} {config_dir}")
+

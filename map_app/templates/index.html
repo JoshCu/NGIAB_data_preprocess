@@ -24,7 +24,7 @@
     <div id="map"></div>
     <h2>Selected Basins</h2>
     <div id="selected-basins">None - get clicking!</div> <!-- HTML box to show selected water basin ids -->
-    <button id="subset-button">Subset</button> <!-- Button to call the Flask endpoint -->
+    <button id="subset-button">Subset</button>This will delete your cached netcdf <!-- Button to call the Flask endpoint -->
     <div id="output-path"></div> <!-- Div to show the output path -->
     <div  id="time-warning"><h3>Make sure you have a date AND time, or else this won't work</h3></div> 
     <div>
@@ -35,7 +35,11 @@
         <label for="end-time">End Time:</label>
         <input type="datetime-local" id="end-time" name="end-time" value ="1985-04-22T00:00:00Z">
     </div>
-    <button id="forcings-button">Create Forcing From Zarrs</button>
+    <bold>If you're making new forcings from the same waterbasin selection. you need to rerun subset, or manually delete merged_data.nc from the subset folder shown above</bold><br>
+    <button id="forcings-button">Create Forcing From Zarrs</button>Creates a cached netcdf after fetching from S3. 
+    <bold>Warning: This will take a while</bold>
+
+    
     <!-- Leaflet JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
     <script src="https://unpkg.com/esri-leaflet"></script>

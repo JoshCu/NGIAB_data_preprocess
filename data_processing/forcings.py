@@ -39,11 +39,11 @@ def clip_stores_to_catchments(store, bounds):
     return clipped_store
 
 
-def compute_store(stores):
+def compute_store(stores, subset_dir):
     # compute the store
     merged_data = stores.compute()
     # save the store locally
-    merged_data.to_netcdf("merged_data.nc")
+    merged_data.to_netcdf(subset_dir / "merged_data.nc")
     return merged_data
 
 
@@ -115,33 +115,34 @@ def compute_zonal_stats(gdf, merged_data, forcings_dir):
 
 
 def setup_directories(wb_id):
-    data_dir = Path(__file__).parent / "output" / wb_id / "config"
-    forcings_dir = Path(__file__).parent / "output" / wb_id / "forcings"
+    data_dir = Path(__file__).parent.parent / "output" / wb_id / "config"
+    forcings_dir = Path(__file__).parent.parent / "output" / wb_id / "forcings"
+    template_file = Path(__file__).parent.parent / "data_sources" / "template.nc"
     geopackage_path = data_dir / f"{wb_id}_subset.gpkg"
-    template_file = Path(__file__).parent / "data_sources" / "template.nc"
+    cached_nc_file = Path(__file__).parent.parent / "output" / wb_id / "merged_data.nc"
 
     for folder in ["by_time", "by_catchment", "temp"]:
         os.makedirs(forcings_dir / folder, exist_ok=True)
-    return forcings_dir, geopackage_path, template_file
+    return forcings_dir, geopackage_path, template_file, cached_nc_file
 
 
 def create_forcings(start_time, end_time, wb_id):
-    forcings_dir, geopackage_path, template_file = setup_directories(wb_id)
+    forcings_dir, geopackage_path, template_file, cached_nc_path = setup_directories(wb_id)
     projection = xr.open_dataset(template_file, engine="netcdf4").crs.esri_pe_string
     print("Got projection from grid file")
     gdf = get_gdf(geopackage_path, projection)
     print("Got gdf")
 
-    if not os.path.exists(forcings_dir / "merged_data.nc"):
-        # lazy_store = get_zarr_stores(start_time, end_time)
+    if not os.path.exists(cached_nc_path):
+        print("no cached nc file found")
+        lazy_store = get_zarr_stores(start_time, end_time)
         print("Got zarr stores")
-        # clipped_store = clip_stores_to_catchments(lazy_store, gdf.total_bounds)
+        clipped_store = clip_stores_to_catchments(lazy_store, gdf.total_bounds)
         print("Clipped stores")
-        # merged_data = compute_store(clipped_store)
+        merged_data = compute_store(clipped_store, cached_nc_path)
         print("Computed store")
-    merged_data = xr.open_dataset(forcings_dir / "merged_data.nc")
+    merged_data = xr.open_dataset(cached_nc_path)
     compute_zonal_stats(gdf, merged_data, forcings_dir)
-
 
 if __name__ == "__main__":
     start_time = "2010-01-01 00:00"
