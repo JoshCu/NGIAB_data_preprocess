@@ -12,7 +12,7 @@ from shapely import unary_union
 from shapely.geometry import Point
 from shapely.wkb import loads
 
-from data_processing.subset import get_graph, get_upstream_ids, subset
+from data_processing.subset import get_graph, get_upstream_ids, subset, file_paths
 from data_processing.forcings import create_forcings
 
 
@@ -128,8 +128,9 @@ def blob_to_geometry(blob):
     return geometry
 
 
-def get_geodf_from_wb_ids(upstream_ids, geopackage):
+def get_geodf_from_wb_ids(upstream_ids):
     # format ids as ('id1', 'id2', 'id3')
+    geopackage = file_paths.conus_hydrofabric()
     sql_query = f"SELECT id, geom FROM divides WHERE id IN {tuple(upstream_ids)}"
     # remove the trailing comma from single element tuples
     sql_query = sql_query.replace(",)", ")")
@@ -157,13 +158,10 @@ def get_geodf_from_wb_ids(upstream_ids, geopackage):
 def get_upstream_geojson_from_wbids():
     print(f"getting graph at {datetime.now()}")
     wb_id = json.loads(request.data.decode("utf-8"))
-    geopackage = Path(__file__).parent.parent / "data_sources" / "conus.gpkg"
-    graph = get_graph(geopackage)
-    print(f"got graph at {datetime.now()}")
-    upstream_ids = get_upstream_ids(wb_id, graph)
+    upstream_ids = get_upstream_ids(wb_id)
     print(f"got upstream ids at {datetime.now()}")
     upstream_ids = list(set(upstream_ids))
-    gdf = get_geodf_from_wb_ids(upstream_ids, geopackage)
+    gdf = get_geodf_from_wb_ids(upstream_ids)
     print(f"got geodf at {datetime.now()}")
     gdf = gdf.to_crs(epsg=4326)
     print(f"converted crs at {datetime.now()}")

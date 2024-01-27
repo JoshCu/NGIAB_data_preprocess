@@ -8,27 +8,31 @@ import geopandas as gpd
 import igraph as ig
 import pandas as pd
 import pyarrow.parquet as pq
-from dataclasses import dataclass
 
 triggers = None
 
-@dataclass
+
 class file_paths:
     @staticmethod
     def data_sources():
         return Path(__file__).parent.parent / "data_sources"
+
     @staticmethod
     def root_output_dir():
         return Path(__file__).parent.parent / "output"
+
     @staticmethod
     def template():
         return file_paths.data_sources() / "template.gpkg"
+
     @staticmethod
     def parquet():
         return file_paths.data_sources() / "conus_model_attributes.parquet"
+
     @staticmethod
     def conus_hydrofabric():
         return file_paths.data_sources() / "conus.gpkg"
+
     @staticmethod
     def hydrofabric_graph():
         return file_paths.conus_hydrofabric().with_suffix(".gpickle")
@@ -61,18 +65,17 @@ def get_graph():
     return network_graph
 
 
-def get_upstream_ids(names, graph):
-    print(f"Getting upstream ids for {names}")
+def get_upstream_ids(names):
+    graph = get_graph()
     if type(names) == str:
         names = [names]
     parent_names = []
-    print(f"Getting upstream ids for {names}")
     for name in names:
-        print(f"Getting upstream ids for {name}")
         id = graph.vs.find(name=name).index
         parents = graph.subcomponent(id, mode="in")
         # get names of ids in parents
         parent_names.extend([graph.vs[x]["name"] for x in parents])
+
     return parent_names
 
 
@@ -226,10 +229,9 @@ def make_geojson(hydrofabric: str) -> None:
 def subset(wb_ids: list[str], hydrofabric: str = file_paths.conus_hydrofabric()) -> str:
     if type(wb_ids) == str:
         wb_ids = [wb_ids]
-    graph = get_graph()
     upstream_ids = []
     for id in wb_ids:
-        upstream_ids += get_upstream_ids(id, graph)
+        upstream_ids += get_upstream_ids(id)
     upstream_ids = sorted(list(set(upstream_ids)))  # Sort the list
     subset_output_dir = file_paths.root_output_dir() / upstream_ids[0]
     if subset_output_dir.exists():
@@ -256,7 +258,7 @@ def subset(wb_ids: list[str], hydrofabric: str = file_paths.conus_hydrofabric())
 #     print("Getting Graph")
 #     graph = get_graph(hydrofabric)
 #     print("Getting Upstream IDs")
-#     upstream_ids = get_upstream_ids("wb-1643991", graph)
+#     upstream_ids = get_upstream_ids("wb-1643991")
 #     output_dir = root_output_dir / upstream_ids[0]
 #     if output_dir.exists():
 #         os.system(f"rm -rf {output_dir}")
@@ -275,4 +277,3 @@ def subset(wb_ids: list[str], hydrofabric: str = file_paths.conus_hydrofabric())
 #     for file in files:
 #         if file.suffix in [".gpkg", ".csv", ".json", ".geojson"]:
 #             os.system(f"mv {file} {config_dir}")
-

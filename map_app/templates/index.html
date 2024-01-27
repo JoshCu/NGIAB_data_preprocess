@@ -1,49 +1,60 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Map Application</title>
     <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <style>
         #map {
-            height: 800px; /* or any other height you prefer */
+            height: 800px;
+            /* or any other height you prefer */
         }
+
         div.leaflet-layer:nth-child(1) {
             filter: saturate(150%);
         }
+
         div.leaflet-layer:nth-child(n+2) {
             filter: contrast(2345);
             mix-blend-mode: multiply;
         }
     </style>
 </head>
+
 <body>
     <h1>Interactive Map</h1>
     <div id="map"></div>
     <h2>Selected Basins</h2>
     <div id="selected-basins">None - get clicking!</div> <!-- HTML box to show selected water basin ids -->
-    <button id="subset-button">Subset</button>This will delete your cached netcdf <!-- Button to call the Flask endpoint -->
+    <button id="subset-button">Subset</button>This will delete your cached netcdf
+    <!-- Button to call the Flask endpoint -->
     <div id="output-path"></div> <!-- Div to show the output path -->
-    <div  id="time-warning"><h3>Make sure you have a date AND time, or else this won't work</h3></div> 
+    <div id="time-warning">
+        <h3>Make sure you have a date AND time, or else this won't work</h3>
+    </div>
     <div>
         <label for="start-time">Start Time:</label>
-        <input type="datetime-local" id="start-time" name="start-time" value ="1985-04-12T00:00:00Z" >
+        <input type="datetime-local" id="start-time" name="start-time" value="1985-04-12T00:00:00Z">
     </div>
     <div>
         <label for="end-time">End Time:</label>
-        <input type="datetime-local" id="end-time" name="end-time" value ="1985-04-22T00:00:00Z">
+        <input type="datetime-local" id="end-time" name="end-time" value="1985-04-22T00:00:00Z">
     </div>
-    <bold>If you're making new forcings from the same waterbasin selection. you need to rerun subset, or manually delete merged_data.nc from the subset folder shown above</bold><br>
-    <button id="forcings-button">Create Forcing From Zarrs</button>Creates a cached netcdf after fetching from S3. 
+    <bold>If you're making new forcings from the same waterbasin selection. you need to rerun subset, or manually delete
+        merged_data.nc from the subset folder shown above</bold><br>
+    <button id="forcings-button">Create Forcing From Zarrs</button>Creates a cached netcdf after fetching from S3.
     <bold>Warning: This will take a while</bold>
 
-    
+
     <!-- Leaflet JS -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
-    <script src="https://unpkg.com/esri-leaflet"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.6.2/proj4.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
+
 </html>
