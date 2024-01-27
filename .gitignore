@@ -1,4 +1,5 @@
 data_sources/conus*
+data_sources/*.parquet
 output/*
 !output/.gitkeep
 env

@@ -27,7 +27,7 @@ class file_paths:
 
     @staticmethod
     def parquet():
-        return file_paths.data_sources() / "conus_model_attributes.parquet"
+        return file_paths.data_sources() / "model_attributes.parquet"
 
     @staticmethod
     def conus_hydrofabric():
@@ -179,12 +179,14 @@ def create_subset_gpkg(ids, hydrofabric):
 
 
 def subset_parquet(ids):
+    # might need to remove this replacement?
     cat_ids = [x.replace("wb", "cat") for x in ids if x.startswith("wb")]
     parquet_path = file_paths.parquet()
     output_dir = file_paths.root_output_dir() / ids[0]
     print(str(parquet_path))
     model_attributes = pq.ParquetDataset(str(parquet_path)).read_pandas().to_pandas()
-    model_attributes = model_attributes.set_index("divide_id").loc[cat_ids]
+    model_attributes = model_attributes.set_index("divide_id")
+    model_attributes = model_attributes.loc[model_attributes.index.isin(cat_ids)]
     model_attributes.to_csv(output_dir / "cfe_noahowp_attributes.csv")
 
 
