@@ -7,9 +7,11 @@ from pathlib import Path
 import geopandas as gpd
 import igraph as ig
 import pandas as pd
+import pyarrow as pa
+import pyarrow.dataset as ds
+import pyarrow.compute as pc_compute
+import pyarrow.csv as pc
 import pyarrow.parquet as pq
-
-triggers = None
 
 
 class file_paths:
@@ -179,15 +181,18 @@ def create_subset_gpkg(ids, hydrofabric):
 
 
 def subset_parquet(ids):
-    # might need to remove this replacement?
     cat_ids = [x.replace("wb", "cat") for x in ids if x.startswith("wb")]
     parquet_path = file_paths.parquet()
     output_dir = file_paths.root_output_dir() / ids[0]
     print(str(parquet_path))
-    model_attributes = pq.ParquetDataset(str(parquet_path)).read_pandas().to_pandas()
-    model_attributes = model_attributes.set_index("divide_id")
-    model_attributes = model_attributes.loc[model_attributes.index.isin(cat_ids)]
-    model_attributes.to_csv(output_dir / "cfe_noahowp_attributes.csv")
+    print("reading parquet")
+    table = pq.read_table(parquet_path)
+    print("filtering parquet")
+    filtered_table = table.filter(
+        pc_compute.is_in(table.column("divide_id"), value_set=pa.array(cat_ids))
+    )
+    print("writing parquet")
+    pc.write_csv(filtered_table, output_dir / "cfe_noahowp_attributes.csv")
 
 
 def make_x_walk(hydrofabric, out_dir) -> None:
