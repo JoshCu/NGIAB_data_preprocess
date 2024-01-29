@@ -12,7 +12,9 @@ from shapely import unary_union
 from shapely.geometry import Point
 from shapely.wkb import loads
 
-from data_processing.subset import get_graph, get_upstream_ids, subset, file_paths
+from data_processing.file_paths import file_paths
+from data_processing.graph_utils import get_upstream_ids
+from data_processing.subset import subset
 from data_processing.forcings import create_forcings
 
 
