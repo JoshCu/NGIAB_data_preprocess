@@ -7,9 +7,30 @@ The code needs a refactor to make it easier to understand, adapt, and reuse else
 1) Select the water basins you're interested in on the map
 1) Click subset, this creates a geopackage with the waterbains you've selected + any basin upstream of it
 1) pick a date and time
-1) generate forcings for your water basins 
+1) generate forcings for your water basins   
 
-# Using this tool
+# Running with docker and devcontainers
+The easiest way to get this all working is with [dev containers](https://code.visualstudio.com/docs/devcontainers/containers).     
+It's a docker container managed by vscode:   
+1) clone this repo   
+2) open it in vscode     
+3) click through the popups in the bottom right    
+depending on what you've already got installed, it may install wsl, docker, and the vscode devcontainer extension    
+4) wait for it to finish building, view the log to watch it build
+5)
+```bash
+cd data_sources
+wget https://lynker-spatial.s3.amazonaws.com/v20.1/conus.gpkg
+wget https://lynker-spatial.s3.amazonaws.com/v20.1/model_attributes.parquet
+# to run
+./run.sh
+
+```
+
+<details>
+    <summary>Manual installation</summary>
+
+## Native ubuntu (or wsl)
 *For forcing generation you need to install exact_extract too, see below
 
 automation of this bit coming soon™
@@ -40,9 +61,10 @@ On ubuntu 22.04, there's a package for GEOS, if you can't find one then [build f
 cd ..
 pip install "pybind11[global]"
 sudo apt install libgeos3.10.2 # possibly libgeos-c1v5 too
-git clone https://github.com/isciences/exactextract/tree/master
-cd exactextract/python
+git clone https://github.com/isciences/exactextract.git
+cd exactextract
 pip install .
-cd ../../NGIAB_data_preprocess
+cd ../NGIAB_data_preprocess
 flask -A map_app run --debug
 ```
+</details>
