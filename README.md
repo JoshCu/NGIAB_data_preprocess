@@ -28,7 +28,7 @@ wget https://lynker-spatial.s3.amazonaws.com/v20.1/model_attributes.parquet
 ```
 
 <details>
-    <summary>Manual local installation<summary>    
+    <summary>Manual installation</summary>
 
 ## Native ubuntu (or wsl)
 *For forcing generation you need to install exact_extract too, see below
