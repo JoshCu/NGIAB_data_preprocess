@@ -17,6 +17,10 @@ from data_processing.graph_utils import get_upstream_ids
 from data_processing.subset import subset
 from data_processing.forcings import create_forcings
 
+#Importing the benchmark here temporarily, so that it runs on
+# server start
+import data_processing.overprofile_utility as op
+op.heavy_benchmark()
 
 main = Blueprint("main", __name__)
 
