@@ -13,10 +13,14 @@ from pathlib import Path
 from data_processing.file_paths import file_paths
 from data_processing.gpkg_utils import add_triggers, remove_triggers, subset_table
 from data_processing.graph_utils import get_upstream_ids
+from multiprocessing import Pool
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+def subset_table_wrapper(argtuple:tuple):
+    table, xargs = argtuple
+    subset_table(table, *xargs)
 
 def create_subset_gpkg(ids: List[str], hydrofabric: str) -> Path:
     output_dir = file_paths.root_output_dir() / ids[0]
@@ -43,8 +47,11 @@ def create_subset_gpkg(ids: List[str], hydrofabric: str) -> Path:
         "lakes",
     ]
 
-    for table in subset_tables:
-        subset_table(table, ids, hydrofabric, str(subset_gpkg_name.absolute()))
+    # for table in subset_tables:
+    #     subset_table(table, ids, hydrofabric, str(subset_gpkg_name.absolute()))
+    xargs = [ids, hydrofabric, str(subset_gpkg_name.absolute())]
+    with Pool() as p:
+        p.map(subset_table_wrapper,[(table, xargs) for table in subset_tables])
 
     add_triggers(triggers, subset_gpkg_name)
     return subset_gpkg_name

@@ -71,6 +71,16 @@ def subset_table(table: str, ids: List[str], hydrofabric: str, subset_gpkg_name:
     source_db = sqlite3.connect(hydrofabric)
     dest_db = sqlite3.connect(subset_gpkg_name)
 
+    query_table_exists = f"select count(*) from sqlite_master where type='table' and name='{table}'"
+    result = source_db.execute(query_table_exists).fetchone()
+    result = result[0]
+    # print(result)
+    if int(result) != 1:
+        print(f"Table {table} did not exist in database ({result})")
+        source_db.close()
+        dest_db.close()
+        return
+
     ids = [f"'{x}'" for x in ids]
     sql_query = f"SELECT * FROM {table} WHERE id IN ({','.join(ids)})"
     contents = source_db.execute(sql_query).fetchall()
