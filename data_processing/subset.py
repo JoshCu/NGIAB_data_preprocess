@@ -86,9 +86,9 @@ def make_geojson(hydrofabric: Path) -> None:
         edge_list = gpd.read_file(hydrofabric, layer="flowpath_edge_list", engine="pyogrio")
 
         make_x_walk(hydrofabric, out_dir)
-        catchments.to_file(out_dir / "catchments.geojson")
-        nexuses.to_file(out_dir / "nexus.geojson")
-        flowpaths.to_file(out_dir / "flowpaths.geojson")
+        catchments.to_file(out_dir / "catchments.geojson", engine="pyogrio")
+        nexuses.to_file(out_dir / "nexus.geojson", engine="pyogrio")
+        flowpaths.to_file(out_dir / "flowpaths.geojson", engine="pyogrio")
         edge_list.to_json(out_dir / "flowpath_edge_list.json", orient="records", indent=2)
     except Exception as e:
         logger.error(f"Unable to use hydrofabric file {hydrofabric}")
