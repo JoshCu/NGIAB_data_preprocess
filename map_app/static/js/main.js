@@ -170,7 +170,7 @@ async function addLayers() {
     await Promise.all(Object.keys(geometry_urls).map(async (key) => {
         var geometryUrl = 'HS-' + geometry_urls[key] + ':' + key + '_boundaries@EPSG:900913';
         bounds = await get_boundary(geometryUrl);
-        L.tileLayer(baseUrl + geometryUrl + '@png/{z}/{x}/{-y}.png', {
+        var layer = L.tileLayer(baseUrl + geometryUrl + '@png/{z}/{x}/{-y}.png', {
             attribution: '&copy; <a href="https://nationalmap.gov/">National Map</a> contributors',
             transparent: true,
             format: 'image/png',
@@ -180,6 +180,9 @@ async function addLayers() {
             reuseTiles: true,
             bounds: bounds,
         }).addTo(map);
+        layer.on("tileloadstart",profile_loader.start_loading);
+        layer.on("tileload",profile_loader.stop_loading);
+        layer.on("tileabort",profile_loader.abort_load);
     }));
     map.on('click', onMapClick);
 }
