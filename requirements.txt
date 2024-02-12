@@ -1,4 +1,5 @@
 pyarrow
+pyyaml
 pyogrio
 flask
 flask-cors

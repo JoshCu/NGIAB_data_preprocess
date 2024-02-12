@@ -7,13 +7,15 @@ from collections import OrderedDict
 from pathlib import Path
 
 import pandas
-
+import yaml
+from file_paths import file_paths
+from datetime import datetime
 
 class GlobalRealization:
     def __init__(self, global_params=None, time=None, routing=None, catchment_realizations=None):
         self.global_params = global_params
         self.time = time
-        self.routing = routing
+        self.routing = {"t_route_config_file_with_path": "/ngen/ngen/data/config/ngen.yaml"}
         self.catchment_realizations = catchment_realizations
 
     def toJSON(self):
@@ -174,13 +176,8 @@ def parse_cfe_parameters(cfe_noahowp_attributes: pandas.DataFrame) -> typing.Dic
         # set to 1 if forcing_file=BMI
         d["num_timesteps"] = "1"
 
-        # ---------------------
-        # Options
-        # ---------------------
-
         # prints various debug and bmi info
         d["verbosity"] = "1"
-
         d["DEBUG"] = "0"
 
         # Parameter in the surface runoff parameterization
@@ -193,23 +190,7 @@ def parse_cfe_parameters(cfe_noahowp_attributes: pandas.DataFrame) -> typing.Dic
 
 
 def make_catchment_configs(base_dir: Path, catchment_configs: pandas.DataFrame) -> None:
-    """
-    Creates CFE configuration files for each catchment in "catchment_configs"
-
-    Parameters
-    ----------
-    base_dir: Path
-        base directory to save the output configuration files
-    catchment_configs: pandas.DataFrame
-        dataframe containing NoahOWP CFE parameters
-
-    Returns
-    -------
-    None
-
-    """
-
-    for name, conf in catchment_configs.items():
+     for name, conf in catchment_configs.items():
         with open(f"{base_dir}/{name}_config.ini", "w") as f:
             for k, v in conf.items():
                 f.write(f"{k}={v}\n")
@@ -221,7 +202,6 @@ def create_cfe_realization(
     time={},
     config_path=Path("."),
     forcing_path=Path("."),
-    troute_path=None,
     binary_path=Path("/dmod/shared_libs"),
 ):
     catchment_configs = parse_cfe_parameters(pandas.read_csv(cfe_noahowp_csv))
@@ -291,91 +271,72 @@ def create_cfe_realization(
 
         catchment_realizations.add_realization(key, realization)
 
-    if troute_path is not None:
-        # routing = {'t_route_config_file_with_path': '/ngen/ngen/data/config/ngen.yaml'}
-        routing = {"t_route_config_file_with_path": f"{troute_path}"}
-    else:
-        routing = None
+
 
     realization = GlobalRealization(
-        time=time, catchment_realizations=catchment_realizations, routing=routing
+        time=time, catchment_realizations=catchment_realizations
     )
 
     with open(f"{base_dir}/realization.json", "w") as f:
         f.write(realization.toJSON())
 
-    ####### ngen-yaml
-    import ruamel.yaml
-
-    # load
-    yaml = ruamel.yaml.YAML()
-    data_sources = Path(__file__).parent / "data_sources"
-    with open(data_sources / "./ngen-routing-template.yaml") as file:
-        ngen = yaml.load(file)
-    # define wb_id
     wb_id = base_dir.parts[-2]
-    # modify
-    ngen["network_topology_parameters"]["supernetwork_parameters"][
-        "geo_file_path"
-    ] = f"{config_path}/{wb_id}_upstream_subset.gpkg"
-    ngen["network_topology_parameters"]["waterbody_parameters"]["level_pool"][
-        "level_pool_waterbody_parameter_file_path"
-    ] = f"{config_path}/{wb_id}_upstream_subset.gpkg"
-    ngen["network_topology_parameters"]["waterbody_parameters"]["level_pool"][
-        "reservoir_parameter_file"
-    ] = f"{config_path}/{wb_id}_upstream_subset.gpkg"
-    ngen["compute_parameters"]["restart_parameters"]["start_datetime"] = time[
-        "start_time"
-    ]  #'2022-08-24 13:00:00'
+    paths = file_paths(wb_id)
+
+    with open(paths.template_troute_config(), 'r') as file:
+        ngen = yaml.safe_load(file)  # Use safe_load for loading
+
+
+    geo_file_path = f"/ngen/ngen/data/config/{wb_id}_subset.gpkg"
+    network_topology = ngen["network_topology_parameters"]
+    supernetwork_params = network_topology["supernetwork_parameters"]
+
+    supernetwork_params["geo_file_path"] = geo_file_path
+    ngen["compute_parameters"]["restart_parameters"]["start_datetime"] = time["start_time"]
     ngen["compute_parameters"]["forcing_parameters"]["nts"] = time["nts"]
 
-    # save
-    with open(base_dir / f"ngen.yaml", "w") as file:
+
+    with open(base_dir / "ngen.yaml", 'w') as file:
         yaml.dump(ngen, file)
 
-    # replace every path in ngen.yaml and realization.json /ngen/ngen/data/
-    path_to_substitute = base_dir.parent.parent
-    with open(base_dir / f"ngen.yaml", "r") as file:
-        ngen = file.read()
-        ngen = ngen.replace(f"{path_to_substitute}", "/ngen/ngen/data")
 
-    with open(base_dir / f"ngen.yaml", "w") as file:
-        file.write(ngen)
 
-    with open(base_dir / f"realization.json", "r") as file:
-        realization = file.read()
-        realization = realization.replace(f"{path_to_substitute}", "/ngen/ngen/data")
-    with open(base_dir / f"realization.json", "w") as file:
-        file.write(realization)
+def create_cfe_wrapper(wb_id: str, start_time: datetime, end_time: datetime, output_interval: int = 3600, nts: int = None):
+    # quick wrapper to get the cfe realization working
+    # without having to refactor this whole thing
+    paths = file_paths(wb_id)
+    binary_path = Path("/opt/shared")
+    cfe_atts_path = paths.config_dir() / "cfe_noahowp_attributes.csv"
+
+    if nts is None:
+        nts = (end_time - start_time).total_seconds() / output_interval
+        
+    start_time = start_time.strftime("%Y-%m-%d %H:%M:%S")
+    end_time = end_time.strftime("%Y-%m-%d %H:%M:%S")
+    time = {
+        "start_time": start_time,
+        "end_time": end_time,
+        "output_interval": output_interval,
+        "nts": nts,
+    }
+    create_cfe_realization(
+        paths.config_dir(),
+        cfe_atts_path,
+        time=time,
+        config_path=Path("/ngen/ngen/data/config/"),
+        forcing_path=Path("/ngen/ngen/data/forcings/"),
+        binary_path=binary_path,
+    )
+
 
 
 if __name__ == "__main__":
-    outdir = Path(__file__).parent / "output" / "wb-1643991"
-    cfe_atts_path = outdir.resolve() / "config/cfe_noahowp_attributes.csv"
-    time = {
-        "start_time": "2010-01-01 00:00:00",
-        "end_time": "2010-01-10 00:00:00",
-        "output_interval": 3600,
-        "nts": 2592,  # Number of timesteps (288 for 1 day)
-    }
+    wb_id = "wb-1643991"
+    start_time = datetime(2010, 1, 1, 0, 0, 0)
+    end_time = datetime(2010, 1,2, 0, 0, 0)
+    #output_interval = 3600
+    #nts = 2592
+    create_cfe_wrapper(wb_id, start_time, end_time)
 
-    config_path = outdir.resolve() / "config"
-    forcing_path = outdir.resolve() / "forcings"
-    troute_path = outdir.resolve() / "config/ngen.yaml"
-    outputs_path = outdir.resolve() / "outputs"
-    if not config_path.exists():
-        config_path.mkdir(parents=True)
-    if not forcing_path.exists():
-        forcing_path.mkdir(parents=True)
-    if not outputs_path.exists():
-        outputs_path.mkdir(parents=True)
 
-    create_cfe_realization(
-        outdir / "config",
-        cfe_atts_path,
-        time=time,
-        config_path=Path(outdir.resolve() / "config"),
-        forcing_path=Path(outdir.resolve() / "forcings"),
-        troute_path=Path(outdir.resolve() / "config/ngen.yaml"),
-        binary_path=Path("/opt/shared"),
-    )
+

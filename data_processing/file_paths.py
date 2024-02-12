@@ -58,3 +58,6 @@ class file_paths:
 
     def cached_nc_file(self) -> Path:
         return file_paths.root_output_dir() / self.wb_id / "merged_data.nc"
+    
+    def template_troute_config(self) -> Path:
+        return file_paths.data_sources() / "ngen-routing-template.yaml"
