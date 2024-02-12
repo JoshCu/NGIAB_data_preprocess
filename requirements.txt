@@ -8,5 +8,9 @@ requests
 igraph
 s3fs
 xarray
+rioxarray
 zarr
 netcdf4
+dask
+black
+isort

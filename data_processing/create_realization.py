@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 
-
 import json
 import typing
 from collections import OrderedDict
 from pathlib import Path
-
+import shutil
 import pandas
 import yaml
-from file_paths import file_paths
+from data_processing.file_paths import file_paths
 from datetime import datetime
 
 class GlobalRealization:
@@ -212,7 +211,7 @@ def create_cfe_realization(
     for key, val in catchment_configs.items():
         config_name = f"{key}_config.ini"
         config_path_ini = f"{config_path}/{config_name}"
-        forcing_file_path = f"{forcing_path}/{key}.csv"
+        forcing_file_path = f"{forcing_path}/by_catchment/{key}.csv"
 
         # CFE
         module_params = {
@@ -295,9 +294,11 @@ def create_cfe_realization(
     ngen["compute_parameters"]["restart_parameters"]["start_datetime"] = time["start_time"]
     ngen["compute_parameters"]["forcing_parameters"]["nts"] = time["nts"]
 
-
     with open(base_dir / "ngen.yaml", 'w') as file:
         yaml.dump(ngen, file)
+
+    # copy the awi base config to the config directory
+    shutil.copy(paths.data_sources() / "awi_config.ini" , base_dir)
 
 
 

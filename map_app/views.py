@@ -17,6 +17,7 @@ from data_processing.graph_utils import get_upstream_ids
 from data_processing.subset import subset
 from data_processing.forcings import create_forcings
 
+from data_processing.create_realization import create_cfe_wrapper
 
 main = Blueprint("main", __name__)
 
@@ -182,11 +183,24 @@ def subset_selection():
 def get_forcings():
     # body: JSON.stringify({'forcing_dir': forcing_dir, 'start_time': start_time, 'end_time': end_time}),
     data = json.loads(request.data.decode("utf-8"))
-    forcing_dir = data.get("forcing_dir").split("/")[-1]
+    wb_id = data.get("forcing_dir").split("/")[-1]
     start_time = data.get("start_time")
     end_time = data.get("end_time")
     # get the forcings
     start_time = datetime.strptime(start_time, "%Y-%m-%dT%H:%M")
     end_time = datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
-    create_forcings(start_time, end_time, forcing_dir)
+    create_forcings(start_time, end_time, wb_id)
+    return "success", 200
+
+@main.route("/realization", methods=["POST"])
+def get_realization():
+    # body: JSON.stringify({'forcing_dir': forcing_dir, 'start_time': start_time, 'end_time': end_time}),
+    data = json.loads(request.data.decode("utf-8"))
+    wb_id = data.get("forcing_dir").split("/")[-1]
+    start_time = data.get("start_time")
+    end_time = data.get("end_time")
+    # get the forcings
+    start_time = datetime.strptime(start_time, "%Y-%m-%dT%H:%M")
+    end_time = datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
+    create_cfe_wrapper(wb_id, start_time, end_time)
     return "success", 200
