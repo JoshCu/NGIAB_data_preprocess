@@ -4,6 +4,8 @@
 var wb_id_dict = {};
 var selected_wb_layer = null;
 var upstream_maps = {};
+var arrive_lines = null;
+var leave_lines = null;
 
 async function update_selected() {
     console.log('updating selected');
@@ -82,7 +84,26 @@ async function populate_upstream() {
                     }
                     console.log(data);
                     // add the new layer
-                    upstream_maps[key] = L.geoJSON(data).addTo(map);
+                    upstream_maps[key] = L.geoJSON(
+                        data, {
+                        style: (feature) => {
+                            var colname = feature["properties"]["col1"];
+                            if (colname.includes("to_lines")) {
+                                return {
+                                    color: "#FF0000",
+                                    weight: 1,
+                                    opacity: 0.5
+                                }
+                            }
+                            if (colname.includes("from_nexus")) {
+                                return {
+                                    color: "#00FF00",
+                                    weight: 2,
+                                    opacity: 0.8
+                                }
+                            }
+                        }}
+                        ).addTo(map);
                 })
                 .catch(error => {
                     console.error('Error:', error);
@@ -215,7 +236,7 @@ async function forcings() {
     fetch('/forcings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 'forcing_dir': forcing_dir, 'start_time': start_time, 'end_time': end_time }),
+        body: JSON.stringify({}),
     })
         .catch(error => {
             console.error('Error:', error);

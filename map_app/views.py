@@ -9,14 +9,19 @@ import geopandas as gpd
 import requests
 from flask import Blueprint, jsonify, render_template, request
 from shapely import unary_union
-from shapely.geometry import Point
+from shapely.geometry import Point, MultiLineString, LineString
 from shapely.wkb import loads
 
 from data_processing.file_paths import file_paths
 from data_processing.graph_utils import get_upstream_ids
 from data_processing.subset import subset
 from data_processing.forcings import create_forcings
-
+from data_processing.graph_utils import get_geom_data, get_flow_lines_in_set
+# graphdata =_utility_graphdata()
+# handle_geom(graphdata)
+# # anomaly = _utility_graph_stats()
+# # check_geometry_types(anomaly)
+# exit()
 
 main = Blueprint("main", __name__)
 
@@ -131,27 +136,64 @@ def blob_to_geometry(blob):
 
 
 def get_geodf_from_wb_ids(upstream_ids):
+    line_dict = get_flow_lines_in_set(upstream_ids)
     # format ids as ('id1', 'id2', 'id3')
     geopackage = file_paths.conus_hydrofabric()
     sql_query = f"SELECT id, geom FROM divides WHERE id IN {tuple(upstream_ids)}"
     # remove the trailing comma from single element tuples
     sql_query = sql_query.replace(",)", ")")
+    #get nexus locations
+    nexi_keys = list(line_dict["to_wbs"].keys())
+    sql_query2 = f"SELECT id, geom FROM nexus WHERE id IN {tuple(nexi_keys)}"
+    sql_query2 = sql_query2.replace(",)", ")")
     # would be nice to use geopandas here but it doesn't support sql on geopackages
     con = sqlite3.connect(geopackage)
     result = con.execute(sql_query).fetchall()
+    result2 = con.execute(sql_query2).fetchall()
     con.close()
     # convert the blobs to geometries
+    geoms = {}
+    nexs = {}
     geometry_list = []
     print(f"sql returned at {datetime.now()}")
     for r in result:
         geometry = blob_to_geometry(r[1])
         if geometry is not None:
             geometry_list.append(geometry)
+            geoms[r[0]] = geometry.centroid
+    for r in result2:
+        geometry = blob_to_geometry(r[1])
+        if geometry is not None:
+            nexs[r[0]] = geometry.centroid
     print(f"converted blobs to geometries at {datetime.now()}")
+    to_lines = []
+    for wb, nex in line_dict["to_lines"]:
+        if wb not in geoms or nex not in nexs:
+            continue
+        to_lines.append(LineString([geoms[wb], nexs[nex]]))
+    nexs_dir = []
+    for nex, targets in line_dict["to_wbs"].items():
+        if not nex in nexs:
+            continue
+        for target in targets:
+            if not target in geoms:
+                continue
+            nexs_dir.append(LineString([nexs[nex], geoms[target]]))
+    merged_tolines = unary_union(to_lines)
+    merged_nexs = unary_union(nexs_dir)
+
     # split geometries into chunks and run unary_union in parallel
     merged_geometry = unary_union(geometry_list)
     # create a geodataframe from the geometry
-    d = {"col1": [upstream_ids[0]], "geometry": [merged_geometry]}
+    d = {"col1": [
+            upstream_ids[0],
+            upstream_ids[0]+"_to_lines",
+            upstream_ids[0]+"_from_nexus"
+        ], "geometry": [
+            merged_geometry,
+            merged_tolines,
+            merged_nexs
+        ]}
     gdf = gpd.GeoDataFrame(d, crs="EPSG:5070")
     return gdf
 
@@ -190,3 +232,35 @@ def get_forcings():
     end_time = datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
     create_forcings(start_time, end_time, forcing_dir)
     return "success", 200
+
+@main.route("/flow_graph_arrive", methods=["POST"])
+def get_flow_graph_for_visuals_arrive():
+    wb_id = request.get_json()
+    graphdata = get_geom_data()
+    arriving_lines = graphdata["arriving_multiline"]
+    # leaving_lines = graphdata["leaving_multiline"]
+
+    # create a geodataframe from the geometry
+    geomet = arriving_lines.get(wb_id, None)
+    if geomet is None:
+        print("wb_id " + str(wb_id) + " had no geometry?")
+        return {"failure":True}, 200
+    d_arrive = {"col1": wb_id+"_arrive", "geometry": [geomet]}
+    gdf_arrive = gpd.GeoDataFrame(d_arrive, crs="EPSG:5070", geometry="geometry")
+    # d_leave = {"col1": [leaving_lines.keys()], "geometry": [leaving_lines.values()]}
+    # gdf_leave = gpd.GeoDataFrame(d_leave, crs="EPSG:5070", geometry="geometry")
+    return gdf_arrive.to_json(), 200
+
+@main.route("/flow_graph_leave", methods=["POST"])
+def get_flow_graph_for_visuals_leave():
+    wb_id = request.get_json()
+    graphdata = get_geom_data()
+    # arriving_lines = graphdata["arriving_multiline"]
+    leaving_lines = graphdata["leaving_multiline"]
+
+    # create a geodataframe from the geometry
+    # d_arrive = {"col1": [arriving_lines.keys()], "geometry": [arriving_lines.values()]}
+    # gdf_arrive = gpd.GeoDataFrame(d_arrive, crs="EPSG:5070", geometry="geometry")
+    d_leave = {"col1": wb_id+"_leave", "geometry": leaving_lines[wb_id]}
+    gdf_leave = gpd.GeoDataFrame(d_leave, crs="EPSG:5070", geometry="geometry")
+    return gdf_leave.to_json(), 200
