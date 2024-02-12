@@ -16,7 +16,7 @@ from data_processing.file_paths import file_paths
 from data_processing.graph_utils import get_upstream_ids
 from data_processing.subset import subset
 from data_processing.forcings import create_forcings
-from data_processing.graph_utils import get_geom_data, get_flow_lines_in_set
+from data_processing.graph_utils import get_flow_lines_in_set
 # graphdata =_utility_graphdata()
 # handle_geom(graphdata)
 # # anomaly = _utility_graph_stats()
@@ -232,35 +232,3 @@ def get_forcings():
     end_time = datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
     create_forcings(start_time, end_time, forcing_dir)
     return "success", 200
-
-@main.route("/flow_graph_arrive", methods=["POST"])
-def get_flow_graph_for_visuals_arrive():
-    wb_id = request.get_json()
-    graphdata = get_geom_data()
-    arriving_lines = graphdata["arriving_multiline"]
-    # leaving_lines = graphdata["leaving_multiline"]
-
-    # create a geodataframe from the geometry
-    geomet = arriving_lines.get(wb_id, None)
-    if geomet is None:
-        print("wb_id " + str(wb_id) + " had no geometry?")
-        return {"failure":True}, 200
-    d_arrive = {"col1": wb_id+"_arrive", "geometry": [geomet]}
-    gdf_arrive = gpd.GeoDataFrame(d_arrive, crs="EPSG:5070", geometry="geometry")
-    # d_leave = {"col1": [leaving_lines.keys()], "geometry": [leaving_lines.values()]}
-    # gdf_leave = gpd.GeoDataFrame(d_leave, crs="EPSG:5070", geometry="geometry")
-    return gdf_arrive.to_json(), 200
-
-@main.route("/flow_graph_leave", methods=["POST"])
-def get_flow_graph_for_visuals_leave():
-    wb_id = request.get_json()
-    graphdata = get_geom_data()
-    # arriving_lines = graphdata["arriving_multiline"]
-    leaving_lines = graphdata["leaving_multiline"]
-
-    # create a geodataframe from the geometry
-    # d_arrive = {"col1": [arriving_lines.keys()], "geometry": [arriving_lines.values()]}
-    # gdf_arrive = gpd.GeoDataFrame(d_arrive, crs="EPSG:5070", geometry="geometry")
-    d_leave = {"col1": wb_id+"_leave", "geometry": leaving_lines[wb_id]}
-    gdf_leave = gpd.GeoDataFrame(d_leave, crs="EPSG:5070", geometry="geometry")
-    return gdf_leave.to_json(), 200
