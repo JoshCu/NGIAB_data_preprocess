@@ -122,7 +122,8 @@ def subset(wb_ids: List[str], hydrofabric: str = file_paths.conus_hydrofabric())
 
 def remove_existing_output_dir(subset_output_dir: str) -> None:
     if subset_output_dir.exists():
-        os.system(f"rm -rf {subset_output_dir}")
+        os.system(f"rm -rf {subset_output_dir / 'config'}")
+        os.system(f"rm -rf {subset_output_dir / 'forcings'}")
 
 
 def convert_gpkg_to_temp(subset_output_dir: str, output_gpkg: str) -> None:
