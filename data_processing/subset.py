@@ -14,7 +14,7 @@ from data_processing.file_paths import file_paths
 from data_processing.gpkg_utils import add_triggers, remove_triggers, subset_table
 from data_processing.graph_utils import get_upstream_ids
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
