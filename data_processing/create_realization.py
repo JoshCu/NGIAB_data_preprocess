@@ -211,7 +211,7 @@ def create_cfe_realization(
     for key, val in catchment_configs.items():
         config_name = f"{key}_config.ini"
         config_path_ini = f"{config_path}/{config_name}"
-        forcing_file_path = f"{forcing_path}/by_catchment/{key}.csv"
+        forcing_file_path = f"{forcing_path}/by_catchment/cat{key[2:]}.csv"
 
         # CFE
         module_params = {
@@ -264,7 +264,7 @@ def create_cfe_realization(
             "fixed_time_step": False,
             "uses_forcing_file": False,
         }
-        f = Formulation("bmi_multi", params=form_params, modules=[m1, m2])
+        f = Formulation("bmi_multi", params=form_params, modules=[m2,m1])
 
         realization = Realization(f, forcing={"path": forcing_file_path})
 
@@ -276,11 +276,16 @@ def create_cfe_realization(
         time=time, catchment_realizations=catchment_realizations
     )
 
-    with open(f"{base_dir}/realization.json", "w") as f:
-        f.write(realization.toJSON())
-
     wb_id = base_dir.parts[-2]
     paths = file_paths(wb_id)
+
+    with open(base_dir / "realization.json", "w") as f:
+        f.write(realization.toJSON())
+
+        # delete the first line of realization.json and prepend lines
+    with open(paths.data_sources() / "global_realization.json", "r") as file: lines = file.read()
+    with open(base_dir / "realization.json", 'r') as original: data = original.read()
+    with open(base_dir / "realization.json", 'w') as modified: modified.write(lines + data[1:])
 
     with open(paths.template_troute_config(), 'r') as file:
         ngen = yaml.safe_load(file)  # Use safe_load for loading
@@ -297,6 +302,10 @@ def create_cfe_realization(
     with open(base_dir / "ngen.yaml", 'w') as file:
         yaml.dump(ngen, file)
 
+
+    
+
+
     # copy the awi base config to the config directory
     shutil.copy(paths.data_sources() / "awi_config.ini" , base_dir)
 
@@ -306,7 +315,6 @@ def create_cfe_wrapper(wb_id: str, start_time: datetime, end_time: datetime, out
     # quick wrapper to get the cfe realization working
     # without having to refactor this whole thing
     paths = file_paths(wb_id)
-    binary_path = Path("/opt/shared")
     cfe_atts_path = paths.config_dir() / "cfe_noahowp_attributes.csv"
 
     if nts is None:
@@ -326,7 +334,6 @@ def create_cfe_wrapper(wb_id: str, start_time: datetime, end_time: datetime, out
         time=time,
         config_path=Path("/ngen/ngen/data/config/"),
         forcing_path=Path("/ngen/ngen/data/forcings/"),
-        binary_path=binary_path,
     )
 
 
