@@ -216,11 +216,38 @@ async function forcings() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 'forcing_dir': forcing_dir, 'start_time': start_time, 'end_time': end_time }),
-    })
+    }).then(response => response.text())
+        .then(response_code => {
+            document.getElementById('forcings-output-path').textContent = "forcings " + response_code;
+        })
         .catch(error => {
             console.error('Error:', error);
         });
 }
+
+async function realization() {
+    console.log('getting realization');
+    const forcing_dir = document.getElementById('output-path').textContent;
+    const start_time = document.getElementById('start-time').value;
+    const end_time = document.getElementById('end-time').value;
+    if (forcing_dir === '' || start_time === '' || end_time === '') {
+        alert('Please enter a valid output path, start time, and end time');
+        document.getElementById('time-warning').style.color = 'red';
+        return;
+    }
+    fetch('/realization', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 'forcing_dir': forcing_dir, 'start_time': start_time, 'end_time': end_time }),
+    }).then(response => response.text())
+        .then(response_code => {
+            document.getElementById('realization-output-path').textContent = "realization " + response_code;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+}
+
 
 geometry_urls = {
     '16': 'e8ddee6a8a90484fa7a976458e79c0c3',
@@ -281,5 +308,8 @@ addLayers();
 // Register the click event listener for the map
 // add listener for the #subset-button
 document.getElementById('subset-button').addEventListener('click', subset);
-// add listener for the #subset-button
+// add listener for the #forcings-button
 document.getElementById('forcings-button').addEventListener('click', forcings);
+// add listener for the #realization-button
+document.getElementById('realization-button').addEventListener('click', realization);
+
