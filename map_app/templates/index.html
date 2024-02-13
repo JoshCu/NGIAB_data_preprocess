@@ -46,8 +46,13 @@
     </div>
     <bold>If you're making new forcings from the same waterbasin selection. you need to rerun subset, or manually delete
         merged_data.nc from the subset folder shown above</bold><br>
-    <button id="forcings-button">Create Forcing From Zarrs</button>Creates a cached netcdf after fetching from S3.
-    <bold>Warning: This will take a while</bold>
+    <button id="forcings-button">Create Forcing From Zarrs</button> Creates a cached netcdf after fetching from S3.
+    <bold> Warning: This will take a while</bold>
+    <div id="forcings-output-path"></div> <!-- Div to show the output path -->
+
+    <button id="realization-button">Create Realization</button>
+    <div id="realization-output-path"></div> <!-- Div to show the output path -->
+
 
 
     <!-- Leaflet JS -->

@@ -8,7 +8,7 @@ import logging
 import geopandas as gpd
 import pandas as pd
 import s3fs
-import xarray
+
 import xarray as xr
 from exactextract import exact_extract
 from data_processing.file_paths import file_paths
@@ -23,7 +23,7 @@ def get_zarr_stores(start_time: str, end_time: str) -> xr.Dataset:
     ]
     s3_file_stores = [s3fs.S3Map(url, s3=s3fs.S3FileSystem(anon=True)) for url in urls]
     time_slice = slice(start_time, end_time)
-    lazy_store = xarray.open_mfdataset(
+    lazy_store = xr.open_mfdataset(
         s3_file_stores, combine="by_coords", parallel=True, engine="zarr"
     )
     lazy_store = lazy_store.sel(time=time_slice)
@@ -56,6 +56,7 @@ def compute_and_save(
     forcings_dir: Path,
     variable: str,
 ) -> pd.DataFrame:
+    
     raster = rasters[variable]
     logging.debug(f"Computing {variable} for {time}")
     results = exact_extract(raster, gdf, ["mean"], include_cols=["divide_id"], output="pandas")
@@ -151,6 +152,8 @@ def create_forcings(start_time: str, end_time: str, wb_id: str) -> None:
         logging.info("Computed store")
 
     merged_data = xr.open_dataset(forcing_paths.cached_nc_file())
+    print(type(merged_data))
+    logging.info(f"Opened cached nc file: [{forcing_paths.cached_nc_file()}]")
     compute_zonal_stats(gdf, merged_data, forcing_paths.forcings_dir())
 
 
