@@ -11,7 +11,11 @@ import pyarrow.csv as pc
 import pyarrow.parquet as pq
 from pathlib import Path
 from data_processing.file_paths import file_paths
-from data_processing.gpkg_utils import add_triggers, remove_triggers, subset_table
+from data_processing.gpkg_utils import (
+    add_triggers,
+    remove_triggers,
+    subset_table,
+)
 from data_processing.graph_utils import get_upstream_ids
 
 logging.basicConfig(level=logging.INFO)
@@ -51,7 +55,7 @@ def create_subset_gpkg(ids: List[str], hydrofabric: str) -> Path:
 
 
 def subset_parquet(ids: List[str]) -> None:
-    cat_ids = [x.replace("wb", "cat") for x in ids if x.startswith("wb")]
+    cat_ids = [x.replace("wb", "cat") for x in ids]
     parquet_path = file_paths.parquet()
     output_dir = file_paths.root_output_dir() / ids[0]
     logger.debug(str(parquet_path))
@@ -84,6 +88,10 @@ def make_geojson(hydrofabric: Path) -> None:
         nexuses = gpd.read_file(hydrofabric, layer="nexus", engine="pyogrio")
         flowpaths = gpd.read_file(hydrofabric, layer="flowpaths", engine="pyogrio")
         edge_list = gpd.read_file(hydrofabric, layer="flowpath_edge_list", engine="pyogrio")
+
+        # rename data keys id -> wb_id and divide_id -> id
+        catchments = catchments.rename(columns={"id": "wb_id"})
+        catchments = catchments.rename(columns={"divide_id": "id"})
 
         make_x_walk(hydrofabric, out_dir)
         catchments.to_file(out_dir / "catchments.geojson")
