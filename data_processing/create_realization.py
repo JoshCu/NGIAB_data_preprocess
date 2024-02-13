@@ -10,6 +10,7 @@ import yaml
 from data_processing.file_paths import file_paths
 from datetime import datetime
 
+
 class GlobalRealization:
     def __init__(self, global_params=None, time=None, routing=None, catchment_realizations=None):
         self.global_params = global_params
@@ -104,9 +105,9 @@ def parse_cfe_parameters(cfe_noahowp_attributes: pandas.DataFrame) -> typing.Dic
         d["soil_params.depth"] = "2.0[m]"
 
         # many of these values are taken from the 2m depth in hydrofabrics cfe_noahowp_attributes
-        d[
-            "soil_params.b"
-        ] = f'{row["bexp_soil_layers_stag=2"]}[]'  # 	beta exponent on Clapp-Hornberger (1978) soil water relations
+        d["soil_params.b"] = (
+            f'{row["bexp_soil_layers_stag=2"]}[]'  # 	beta exponent on Clapp-Hornberger (1978) soil water relations
+        )
 
         # saturated hydraulic conductivity
         d["soil_params.satdk"] = f'{row["dksat_soil_layers_stag=2"]}[m s-1]'
@@ -183,13 +184,13 @@ def parse_cfe_parameters(cfe_noahowp_attributes: pandas.DataFrame) -> typing.Dic
         # (https://mikejohnson51.github.io/hyAggregate/#Routing_Attributes)
         d["refkdt"] = f'{row["refkdt"]}'
 
-        catchment_configs[row.divide_id] = d
+        catchment_configs[row["divide_id"]] = d
 
     return catchment_configs
 
 
 def make_catchment_configs(base_dir: Path, catchment_configs: pandas.DataFrame) -> None:
-     for name, conf in catchment_configs.items():
+    for name, conf in catchment_configs.items():
         with open(f"{base_dir}/{name}_config.ini", "w") as f:
             for k, v in conf.items():
                 f.write(f"{k}={v}\n")
@@ -209,9 +210,10 @@ def create_cfe_realization(
     catchment_realizations = CatchmentRealizations()
 
     for key, val in catchment_configs.items():
+        # wb_key = f"wb-{key.split('-')[1]}"
         config_name = f"{key}_config.ini"
         config_path_ini = f"{config_path}/{config_name}"
-        forcing_file_path = f"{forcing_path}/by_catchment/cat{key[2:]}.csv"
+        forcing_file_path = f"{forcing_path}/by_catchment/{key}.csv"
 
         # CFE
         module_params = {
@@ -227,7 +229,7 @@ def create_cfe_realization(
                 "atmosphere_water__liquid_equivalent_precipitation_rate": "precip_rate",
                 "water_potential_evaporation_flux": "EVAPOTRANS",
                 "ice_fraction_schaake": "sloth_ice_fraction_schaake",
-                "ice_fraction_xinan": "sloth_ice_fraction_xinan",
+                "ice_fraction_xinanjiang": "sloth_ice_fraction_xinan",
                 "soil_moisture_profile": "sloth_smp",
             },
             "library_file": f"{binary_path}/libcfebmi.so.1.0.0",
@@ -264,17 +266,12 @@ def create_cfe_realization(
             "fixed_time_step": False,
             "uses_forcing_file": False,
         }
-        f = Formulation("bmi_multi", params=form_params, modules=[m2,m1])
+        f = Formulation("bmi_multi", params=form_params, modules=[m2, m1])
 
         realization = Realization(f, forcing={"path": forcing_file_path})
-
         catchment_realizations.add_realization(key, realization)
 
-
-
-    realization = GlobalRealization(
-        time=time, catchment_realizations=catchment_realizations
-    )
+    realization = GlobalRealization(time=time, catchment_realizations=catchment_realizations)
 
     wb_id = base_dir.parts[-2]
     paths = file_paths(wb_id)
@@ -282,14 +279,8 @@ def create_cfe_realization(
     with open(base_dir / "realization.json", "w") as f:
         f.write(realization.toJSON())
 
-        # delete the first line of realization.json and prepend lines
-    with open(paths.data_sources() / "global_realization.json", "r") as file: lines = file.read()
-    with open(base_dir / "realization.json", 'r') as original: data = original.read()
-    with open(base_dir / "realization.json", 'w') as modified: modified.write(lines + data[1:])
-
-    with open(paths.template_troute_config(), 'r') as file:
+    with open(paths.template_troute_config(), "r") as file:
         ngen = yaml.safe_load(file)  # Use safe_load for loading
-
 
     geo_file_path = f"/ngen/ngen/data/config/{wb_id}_subset.gpkg"
     network_topology = ngen["network_topology_parameters"]
@@ -299,19 +290,20 @@ def create_cfe_realization(
     ngen["compute_parameters"]["restart_parameters"]["start_datetime"] = time["start_time"]
     ngen["compute_parameters"]["forcing_parameters"]["nts"] = time["nts"]
 
-    with open(base_dir / "ngen.yaml", 'w') as file:
+    with open(base_dir / "ngen.yaml", "w") as file:
         yaml.dump(ngen, file)
 
-
-    
-
-
     # copy the awi base config to the config directory
-    shutil.copy(paths.data_sources() / "awi_config.ini" , base_dir)
+    shutil.copy(paths.data_sources() / "awi_config.ini", base_dir)
 
 
-
-def create_cfe_wrapper(wb_id: str, start_time: datetime, end_time: datetime, output_interval: int = 3600, nts: int = None):
+def create_cfe_wrapper(
+    wb_id: str,
+    start_time: datetime,
+    end_time: datetime,
+    output_interval: int = 3600,
+    nts: int = None,
+):
     # quick wrapper to get the cfe realization working
     # without having to refactor this whole thing
     paths = file_paths(wb_id)
@@ -319,7 +311,7 @@ def create_cfe_wrapper(wb_id: str, start_time: datetime, end_time: datetime, out
 
     if nts is None:
         nts = (end_time - start_time).total_seconds() / output_interval
-        
+
     start_time = start_time.strftime("%Y-%m-%d %H:%M:%S")
     end_time = end_time.strftime("%Y-%m-%d %H:%M:%S")
     time = {
@@ -336,15 +328,13 @@ def create_cfe_wrapper(wb_id: str, start_time: datetime, end_time: datetime, out
         forcing_path=Path("/ngen/ngen/data/forcings/"),
     )
 
+    paths.setup_run_folders()
 
 
 if __name__ == "__main__":
     wb_id = "wb-1643991"
     start_time = datetime(2010, 1, 1, 0, 0, 0)
-    end_time = datetime(2010, 1,2, 0, 0, 0)
-    #output_interval = 3600
-    #nts = 2592
+    end_time = datetime(2010, 1, 2, 0, 0, 0)
+    # output_interval = 3600
+    # nts = 2592
     create_cfe_wrapper(wb_id, start_time, end_time)
-
-
-
