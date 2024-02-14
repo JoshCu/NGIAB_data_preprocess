@@ -60,7 +60,7 @@ class file_paths:
         return self.config_dir() / f"{self.wb_id}_subset.gpkg"
 
     def cached_nc_file(self) -> Path:
-        return file_paths.subset_dir() / "merged_data.nc"
+        return file_paths.subset_dir(self) / "merged_data.nc"
 
     def template_troute_config(self) -> Path:
         return file_paths.data_sources() / "ngen-routing-template.yaml"
