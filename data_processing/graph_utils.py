@@ -2,13 +2,9 @@ import sqlite3
 from pathlib import Path
 import logging
 from typing import List, Union
-
 import igraph as ig
 from data_processing.file_paths import file_paths
-import random
-import pickle
-import os
-import shapely
+from functools import cache
 
 def create_graph_from_gpkg(hydrofabric: Path) -> ig.Graph:
     """
@@ -29,7 +25,7 @@ def create_graph_from_gpkg(hydrofabric: Path) -> ig.Graph:
     network_graph = ig.Graph.TupleList(merged, directed=True)
     return network_graph
 
-
+@cache
 def get_graph() -> ig.Graph:
     """
     Attempts to load a saved graph, if it doesn't exist, creates one.
@@ -37,8 +33,6 @@ def get_graph() -> ig.Graph:
     Returns:
         ig.Graph: The graph.
     """
-    if hasattr(get_graph, "cached_graph"):
-        return get_graph.cached_graph
     pickled_graph_path = file_paths.hydrofabric_graph()
     network_graph = ig.Graph()
     if not pickled_graph_path.exists():
@@ -49,7 +43,6 @@ def get_graph() -> ig.Graph:
 
     network_graph = network_graph.Read_Pickle(pickled_graph_path)
     logging.debug(network_graph.summary())
-    get_graph.cached_graph = network_graph
     return network_graph
 
 
