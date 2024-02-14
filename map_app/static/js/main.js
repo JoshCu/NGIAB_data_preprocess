@@ -7,10 +7,68 @@ var upstream_maps = {};
 var arrive_lines = null;
 var leave_lines = null;
 
+var registered_layers = {}
+
+function setup_style_update(layer_name, layer_settingpath, layer) {
+    if (layer_name in registered_layers) {
+        registered_layers[layer_name] = layer;
+        return
+    }
+    function layer_style_callback() {
+        if (!(layer_name in registered_layers)) {
+            return
+        }
+        var selected_style = control_panel.utility.get_setting_value(layer_settingpath);
+        var layer = registered_layers[layer_name];
+        if (typeof layer == "object"&&!("_leaflet_id" in layer)) {
+            for (const [key, l] of Object.entries(layer)) {
+                if (l != null) {
+                    l.setStyle(selected_style)
+                }
+            }
+        }
+        else {
+            registered_layers[layer_name].setStyle(selected_style);
+        }
+    }
+    var toggle_path = layer_settingpath.split(".").slice(0,-1).join(".")+".toggle"
+    function toggle_callback() {
+        var toggle_val = control_panel.utility.get_setting_value(toggle_path);
+        console.log("toggle: "+JSON.stringify(toggle_val))
+        var layer = registered_layers[layer_name];
+        if (typeof layer == "object"&&!("_leaflet_id" in layer)) {
+            for (const [key, l] of Object.entries(layer)) {
+                if (l != null) {
+                    if ((!toggle_val)&&map.hasLayer(l)) {
+                        map.removeLayer(l);
+                    }
+                    else if (toggle_val&&(!map.hasLayer(l))) {
+                        map.addLayer(l);
+                    }
+                }
+            }
+        }
+        else {
+            if ((!toggle_val)&&map.hasLayer(layer)) {
+                map.removeLayer(layer);
+            }
+            else if (toggle_val&&(!map.hasLayer(layer))) {
+                map.addLayer(layer);
+            }
+        }
+    }
+    control_panel.utility.setup_group_callback(
+        layer_settingpath,
+        layer_style_callback
+    );
+    console.log("Setting up toggle with "+toggle_path)
+    control_panel.utility.setup_callback(toggle_path, toggle_callback);
+    registered_layers[layer_name] = layer
+}
+
 async function update_selected() {
     console.log('updating selected');
     if (!(Object.keys(wb_id_dict).length === 0)) {
-
 
 
         fetch('/get_geojson_from_wbids', {
@@ -27,15 +85,13 @@ async function update_selected() {
                 }
                 console.log(data);
                 // add the new layer
+                var selected_style = control_panel.utility.get_setting_value("geometries.selected_wb_layer.style");
+
                 selected_wb_layer = L.geoJSON(data, {
                     onEachFeature: colorlayer,
-                    style: {
-                        color: "#eb34d8",
-                        opacity: 0.6,
-                        fillColor: '#e0abff',
-                        fillOpacity: 0
-                    }
+                    style: selected_style
                 }).addTo(map);
+                setup_style_update("selected_wb_layer", ".geometries.selected_wb_layer.style", selected_wb_layer);
             }).then()
             .catch(error => {
                 console.error('Error:', error);
@@ -46,29 +102,59 @@ async function update_selected() {
         }
     }
     await populate_upstream();
+    setup_style_update("selected_wb_layer", "geometries.selected_wb_layer.style", selected_wb_layer);
     document.getElementById('selected-basins').textContent = Object.keys(wb_id_dict).join(', ');
 }
 
 async function populate_upstream() {
+    var layernames = [
+        "merged_geometry", 
+        "merged_tolines", 
+        "merged_from_nexus", 
+        "nexus_circles"
+    ];
+
     console.log('populating upstream selected');
+    layernames.forEach(lname => {
+        setup_style_update(lname, ".geometries." + lname + ".style", {});
+    });
+    layernames.forEach(lname => {
+        if (!(lname in registered_layers)||!(lname in upstream_maps)) {
+            registered_layers[lname] = {}
+            upstream_maps[lname] = {}
+        }
+    });
+    
     // drop any key that is not in the wb_id_dict
-    for (const [key, value] of Object.entries(upstream_maps)) {
-        if (!(key in wb_id_dict)) {
-            map.removeLayer(value);
-            delete upstream_maps[key];
+    layernames.forEach(lname => {
+        for (const [key, value] of Object.entries(upstream_maps[lname])) {
+            if (!(key in wb_id_dict)) {
+                if (value != null) {
+                    map.removeLayer(value);
+                }
+                delete upstream_maps[lname][key];
+                delete registered_layers[lname][key]
+            }
         }
-    }
+    });
     // add any key that is in the wb_id_dict but not in the upstream_maps
-    for (const [key, value] of Object.entries(wb_id_dict)) {
-        if (!(key in upstream_maps)) {
-            upstream_maps[key] = null;
+    layernames.forEach(lname => {
+        for (const [key, value] of Object.entries(wb_id_dict)) {
+            if (!(key in upstream_maps[lname])) {
+                upstream_maps[lname][key] = null;
+                registered_layers[lname][key] = null;
+                
+            }
         }
-    }
-    if (Object.keys(upstream_maps).length === 0) {
+    });
+
+    if (layernames.some((v, i, a) => {
+        return (Object.keys(upstream_maps[v]).length === 0);
+    })) {
         return;
     }
 
-    const fetchPromises = Object.entries(upstream_maps).map(([key, value]) => {
+    const fetchPromises = Object.entries(upstream_maps[layernames[0]]).map(([key, value]) => {
         if (value === null) {
             return fetch('/get_upstream_geojson_from_wbids', {
                 method: 'POST',
@@ -79,31 +165,25 @@ async function populate_upstream() {
                 .then(data => {
                     // if the wb_id is already in the dict, remove the key
                     // remove the old layer
-                    if (upstream_maps[key]) {
-                        map.removeLayer(upstream_maps[key]);
+                    if (layernames.some((v, i, a) => {
+                        return (upstream_maps[v][key]);
+                    })) {
+                        layernames.forEach(lname => {
+                            registered_layers[lname][key] = null;
+                            map.removeLayer(upstream_maps[lname][key]);
+                        });
                     }
                     console.log(data);
                     // add the new layer
-                    upstream_maps[key] = L.geoJSON(
-                        data, {
-                        style: (feature) => {
-                            var colname = feature["properties"]["col1"];
-                            if (colname.includes("to_lines")) {
-                                return {
-                                    color: "#FF0000",
-                                    weight: 1,
-                                    opacity: 0.5
-                                }
-                            }
-                            if (colname.includes("from_nexus")) {
-                                return {
-                                    color: "#00FF00",
-                                    weight: 2,
-                                    opacity: 0.8
-                                }
-                            }
-                        }}
-                        ).addTo(map);
+                    for (const [name, gjson_] of Object.entries(data)) {
+                        var gjson = JSON.parse(gjson_);
+                        var style = control_panel.utility.get_setting_value(".geometries." + name + ".style");
+                        upstream_maps[name][key] = L.geoJSON(
+                            gjson, 
+                            {style: style}
+                            ).addTo(map);
+                        registered_layers[name][key] = upstream_maps[name][key];
+                    }
                 })
                 .catch(error => {
                     console.error('Error:', error);
@@ -113,6 +193,8 @@ async function populate_upstream() {
 
     await Promise.all(fetchPromises);
     if (selected_wb_layer) {
+        
+        
         selected_wb_layer.bringToFront();
     }
 }

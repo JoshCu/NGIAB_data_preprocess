@@ -171,7 +171,9 @@ def get_geodf_from_wb_ids(upstream_ids):
         if wb not in geoms or nex not in nexs:
             continue
         to_lines.append(LineString([geoms[wb], nexs[nex]]))
+    lngth = sum(x.length for x in to_lines)/max(len(to_lines),1)
     nexs_dir = []
+    nex_pts = []
     for nex, targets in line_dict["to_wbs"].items():
         if not nex in nexs:
             continue
@@ -179,23 +181,45 @@ def get_geodf_from_wb_ids(upstream_ids):
             if not target in geoms:
                 continue
             nexs_dir.append(LineString([nexs[nex], geoms[target]]))
+        nex_pts.append(nexs[nex].buffer(lngth/4, 8))
     merged_tolines = unary_union(to_lines)
     merged_nexs = unary_union(nexs_dir)
+    
 
     # split geometries into chunks and run unary_union in parallel
     merged_geometry = unary_union(geometry_list)
     # create a geodataframe from the geometry
-    d = {"col1": [
-            upstream_ids[0],
-            upstream_ids[0]+"_to_lines",
+    d1 = {"col1": [
+            upstream_ids[0]+"_merged_geometry"
+        ], "geometry": [
+            merged_geometry
+        ]}
+    d2 = {"col1": [
+            upstream_ids[0]+"_to_lines"
+        ], "geometry": [
+            merged_tolines
+        ]}
+    d3 = {"col1": [
             upstream_ids[0]+"_from_nexus"
         ], "geometry": [
-            merged_geometry,
-            merged_tolines,
             merged_nexs
         ]}
-    gdf = gpd.GeoDataFrame(d, crs="EPSG:5070")
-    return gdf
+    d4 = {"col1": [
+        ], "geometry": [
+        ]}
+    for i, pt in enumerate(nex_pts):
+        d4["col1"].append(upstream_ids[0]+"_nex_circles"+str(i))
+        d4["geometry"].append(pt)
+    ds = {
+        "merged_geometry": d1, 
+        "merged_tolines": d2, 
+        "merged_from_nexus": d3, 
+        "nexus_circles":d4
+        }
+    gs = {}
+    for k, d in ds.items():
+        gs[k] = gpd.GeoDataFrame(d, crs="EPSG:5070")
+    return gs
 
 
 @main.route("/get_upstream_geojson_from_wbids", methods=["POST"])
@@ -205,11 +229,18 @@ def get_upstream_geojson_from_wbids():
     upstream_ids = get_upstream_ids(wb_id)
     print(f"got upstream ids at {datetime.now()}")
     upstream_ids = list(set(upstream_ids))
-    gdf = get_geodf_from_wb_ids(upstream_ids)
+    gdfs = get_geodf_from_wb_ids(upstream_ids)
     print(f"got geodf at {datetime.now()}")
-    gdf = gdf.to_crs(epsg=4326)
+    for k in gdfs:
+        gdfs[k] = gdfs[k].to_crs(epsg=4326)
     print(f"converted crs at {datetime.now()}")
-    return gdf.to_json(), 200
+    def serialize_geodf(obj):
+        if isinstance(obj, gpd.GeoDataFrame):
+            return obj.to_json()
+        else:
+            raise TypeError()
+
+    return json.dumps(gdfs,default=serialize_geodf), 200
 
 
 @main.route("/subset", methods=["POST"])
