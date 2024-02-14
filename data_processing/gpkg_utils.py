@@ -1,6 +1,7 @@
 import sqlite3
 import logging
 from typing import List, Tuple
+from pathlib import Path
 
 
 def copy_rTree_tables(
@@ -70,6 +71,13 @@ def subset_table(table: str, ids: List[str], hydrofabric: str, subset_gpkg_name:
     logging.info(f"Subsetting {table} in {subset_gpkg_name}")
     source_db = sqlite3.connect(hydrofabric)
     dest_db = sqlite3.connect(subset_gpkg_name)
+
+    if table == "nexus":
+        sql_query = f"SELECT toid FROM divides"
+        contents = dest_db.execute(sql_query).fetchall()
+        nexus_ids = [str(x[0]) for x in contents]
+        ids = list(set(ids + nexus_ids))
+        ids = [f"nex-{x.split('-')[1]}" for x in ids]
 
     ids = [f"'{x}'" for x in ids]
     sql_query = f"SELECT * FROM {table} WHERE id IN ({','.join(ids)})"

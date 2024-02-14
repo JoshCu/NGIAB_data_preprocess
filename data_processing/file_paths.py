@@ -33,7 +33,7 @@ class file_paths:
 
     @staticmethod
     def parquet() -> Path:
-        return file_paths.data_sources() / "model_attributes.parquet"
+        return file_paths.data_sources() / "conus_model_attributes.parquet"
 
     @staticmethod
     def conus_hydrofabric() -> Path:
@@ -47,14 +47,25 @@ class file_paths:
     def template_nc() -> Path:
         return file_paths.data_sources() / "template.nc"
 
+    def subset_dir(self) -> Path:
+        return file_paths.root_output_dir() / self.wb_id
+
     def config_dir(self) -> Path:
-        return file_paths.root_output_dir() / self.wb_id / "config"
+        return file_paths.subset_dir(self) / "config"
 
     def forcings_dir(self) -> Path:
-        return file_paths.root_output_dir() / self.wb_id / "forcings"
+        return file_paths.subset_dir(self) / "forcings"
 
     def geopackage_path(self) -> Path:
         return self.config_dir() / f"{self.wb_id}_subset.gpkg"
 
     def cached_nc_file(self) -> Path:
-        return file_paths.root_output_dir() / self.wb_id / "merged_data.nc"
+        return file_paths.subset_dir(self) / "merged_data.nc"
+
+    def template_troute_config(self) -> Path:
+        return file_paths.data_sources() / "ngen-routing-template.yaml"
+
+    def setup_run_folders(self) -> None:
+        Path(self.subset_dir() / "restart").mkdir(parents=True, exist_ok=True)
+        Path(self.subset_dir() / "lakeout").mkdir(parents=True, exist_ok=True)
+        Path(self.subset_dir() / "outputs").mkdir(parents=True, exist_ok=True)
