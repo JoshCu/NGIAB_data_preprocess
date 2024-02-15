@@ -20,7 +20,7 @@ function setup_style_update(layer_name, layer_settingpath, layer) {
         }
         var selected_style = control_panel.utility.get_setting_value(layer_settingpath);
         var layer = registered_layers[layer_name];
-        if (typeof layer == "object"&&!("_leaflet_id" in layer)) {
+        if (typeof layer == "object" && !("_leaflet_id" in layer)) {
             for (const [key, l] of Object.entries(layer)) {
                 if (l != null) {
                     l.setStyle(selected_style)
@@ -31,28 +31,28 @@ function setup_style_update(layer_name, layer_settingpath, layer) {
             registered_layers[layer_name].setStyle(selected_style);
         }
     }
-    var toggle_path = layer_settingpath.split(".").slice(0,-1).join(".")+".toggle"
+    var toggle_path = layer_settingpath.split(".").slice(0, -1).join(".") + ".toggle"
     function toggle_callback() {
         var toggle_val = control_panel.utility.get_setting_value(toggle_path);
-        console.log("toggle: "+JSON.stringify(toggle_val))
+        console.log("toggle: " + JSON.stringify(toggle_val))
         var layer = registered_layers[layer_name];
-        if (typeof layer == "object"&&!("_leaflet_id" in layer)) {
+        if (typeof layer == "object" && !("_leaflet_id" in layer)) {
             for (const [key, l] of Object.entries(layer)) {
                 if (l != null) {
-                    if ((!toggle_val)&&map.hasLayer(l)) {
+                    if ((!toggle_val) && map.hasLayer(l)) {
                         map.removeLayer(l);
                     }
-                    else if (toggle_val&&(!map.hasLayer(l))) {
+                    else if (toggle_val && (!map.hasLayer(l))) {
                         map.addLayer(l);
                     }
                 }
             }
         }
         else {
-            if ((!toggle_val)&&map.hasLayer(layer)) {
+            if ((!toggle_val) && map.hasLayer(layer)) {
                 map.removeLayer(layer);
             }
-            else if (toggle_val&&(!map.hasLayer(layer))) {
+            else if (toggle_val && (!map.hasLayer(layer))) {
                 map.addLayer(layer);
             }
         }
@@ -61,7 +61,7 @@ function setup_style_update(layer_name, layer_settingpath, layer) {
         layer_settingpath,
         layer_style_callback
     );
-    console.log("Setting up toggle with "+toggle_path)
+    console.log("Setting up toggle with " + toggle_path)
     control_panel.utility.setup_callback(toggle_path, toggle_callback);
     registered_layers[layer_name] = layer
 }
@@ -108,9 +108,9 @@ async function update_selected() {
 
 async function populate_upstream() {
     var layernames = [
-        "merged_geometry", 
-        "merged_tolines", 
-        "merged_from_nexus", 
+        "merged_geometry",
+        "merged_tolines",
+        "merged_from_nexus",
         "nexus_circles"
     ];
 
@@ -119,12 +119,12 @@ async function populate_upstream() {
         setup_style_update(lname, ".geometries." + lname + ".style", {});
     });
     layernames.forEach(lname => {
-        if (!(lname in registered_layers)||!(lname in upstream_maps)) {
+        if (!(lname in registered_layers) || !(lname in upstream_maps)) {
             registered_layers[lname] = {}
             upstream_maps[lname] = {}
         }
     });
-    
+
     // drop any key that is not in the wb_id_dict
     layernames.forEach(lname => {
         for (const [key, value] of Object.entries(upstream_maps[lname])) {
@@ -143,7 +143,7 @@ async function populate_upstream() {
             if (!(key in upstream_maps[lname])) {
                 upstream_maps[lname][key] = null;
                 registered_layers[lname][key] = null;
-                
+
             }
         }
     });
@@ -179,9 +179,9 @@ async function populate_upstream() {
                         var gjson = JSON.parse(gjson_);
                         var style = control_panel.utility.get_setting_value(".geometries." + name + ".style");
                         upstream_maps[name][key] = L.geoJSON(
-                            gjson, 
-                            {style: style}
-                            ).addTo(map);
+                            gjson,
+                            { style: style }
+                        ).addTo(map);
                         registered_layers[name][key] = upstream_maps[name][key];
                     }
                 })
@@ -193,8 +193,8 @@ async function populate_upstream() {
 
     await Promise.all(fetchPromises);
     if (selected_wb_layer) {
-        
-        
+
+
         selected_wb_layer.bringToFront();
     }
 }
