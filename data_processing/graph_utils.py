@@ -2,10 +2,9 @@ import sqlite3
 from pathlib import Path
 import logging
 from typing import List, Union
-
 import igraph as ig
 from data_processing.file_paths import file_paths
-
+from functools import cache
 
 def create_graph_from_gpkg(hydrofabric: Path) -> ig.Graph:
     """
@@ -26,7 +25,7 @@ def create_graph_from_gpkg(hydrofabric: Path) -> ig.Graph:
     network_graph = ig.Graph.TupleList(merged, directed=True)
     return network_graph
 
-
+@cache
 def get_graph() -> ig.Graph:
     """
     Attempts to load a saved graph, if it doesn't exist, creates one.
@@ -68,3 +67,25 @@ def get_upstream_ids(names: Union[str, List[str]]) -> List[str]:
         parent_names.extend([graph.vs[x]["name"] for x in parents])
 
     return parent_names
+
+def get_flow_lines_in_set(upstream_ids:list)->dict:
+    # if not getattr(get_flow_lines_in_set, "cache"):
+    #     get_flow_lines_in_set.cache = {}
+    graph = get_graph()
+    to_lines = []
+    to_wbs = {}
+    if not isinstance(upstream_ids, list):
+        upstream_ids = [upstream_ids]
+    for name in upstream_ids:
+        node = graph.vs.find(name=name)
+        to_nexi = node.successors()
+        for nex in to_nexi:
+            nm = nex["name"]
+            to_lines.append([name, nm])
+            if nm in to_wbs:
+                continue
+            to_wbs[nm] = []
+            for next in nex.successors():
+                to_wbs[nm].append(next["name"])
+    return {"to_lines":to_lines, "to_wbs":to_wbs}
+
