@@ -2,6 +2,9 @@ import sqlite3
 import logging
 from typing import List, Tuple
 from pathlib import Path
+import geopandas as gpd
+from data_processing.file_paths import file_paths
+from functools import cache
 
 
 def copy_rTree_tables(
@@ -135,3 +138,9 @@ def add_triggers(triggers: List[Tuple], dest_db: str) -> None:
 
     con.commit()
     con.close()
+
+@cache
+def get_vpu_gdf():
+    vpu_boundaries = gpd.read_file(file_paths.data_sources()/"vpu_boundaries.shp", engine="pyogrio")
+    vpu_boundaries=vpu_boundaries.to_crs(epsg=4326)
+    return vpu_boundaries

@@ -44,7 +44,7 @@ def create_subset_gpkg(ids: List[str], hydrofabric: str) -> Path:
         "flowpath_edge_list",
         "flowpath_attributes",
         "hydrolocations",
-        "lakes",
+        # "lakes",
     ]
 
     for table in subset_tables:

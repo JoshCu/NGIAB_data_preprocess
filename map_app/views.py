@@ -19,6 +19,8 @@ from data_processing.forcings import create_forcings
 
 from data_processing.graph_utils import get_flow_lines_in_set
 from data_processing.create_realization import create_cfe_wrapper
+import data_processing.gpkg_utils as gpkg_u
+import shapely as sh
 
 main = Blueprint("main", __name__)
 
@@ -273,3 +275,21 @@ def get_realization():
     end_time = datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
     create_cfe_wrapper(wb_id, start_time, end_time)
     return "success", 200
+
+@main.route("/get_vpu", methods=["POST"])
+def get_vpu():
+    vpu_boundaries = gpkg_u.get_vpu_gdf()
+    return vpu_boundaries.to_json(), 200
+
+@main.route("/get_wbids_from_vpu", methods=["POST"])
+def get_wbids_from_vpu():
+    vpu = json.loads(request.data.decode("utf-8"))
+    vpu = sh.geometry.shape(vpu)
+    #convert to crs 5070
+    vpu = gpd.GeoDataFrame({"geometry": [vpu]}, crs="EPSG:4326")
+    vpu = vpu.to_crs(epsg=5070)
+    wbs = gpd.read_file(file_paths.data_sources()/"conus.gpkg", layer="divides", mask=vpu)
+    wbs = wbs.to_crs(epsg=4326)
+    wbs = wbs[wbs["id"].notna()]
+    #return dict[id: [lat, lon]]
+    return json.dumps(dict(zip(wbs["id"], zip(wbs["geometry"].centroid.x, wbs["geometry"].centroid.y)))), 200

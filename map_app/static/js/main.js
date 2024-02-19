@@ -9,6 +9,9 @@ var leave_lines = null;
 
 var registered_layers = {}
 
+var select_wb_toggle = false;
+var need_upstream = false;
+
 function setup_style_update(layer_name, layer_settingpath, layer) {
     if (layer_name in registered_layers) {
         registered_layers[layer_name] = layer;
@@ -112,7 +115,7 @@ async function update_selected() {
     console.log('updating selected');
     if (!(Object.keys(wb_id_dict).length === 0)) {
 
-
+        console.log('fetching')
         fetch('/get_geojson_from_wbids', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -149,6 +152,9 @@ async function update_selected() {
 }
 
 async function populate_upstream() {
+    if (!need_upstream) {
+        return;
+    }
     var layernames = [
         "merged_geometry", 
         "merged_tolines", 
@@ -256,6 +262,9 @@ function colorlayer(feature, layer) {
 
 
 function onMapClick(event) {
+    if (!select_wb_toggle) {
+        return;
+    }
     // Extract the clicked coordinates
     var lat = event.latlng.lat;
     var lng = event.latlng.lng;
@@ -394,6 +403,45 @@ async function realization() {
         });
 }
 
+var vpu_selected = {};
+var vpu_wbids = {};
+
+async function select_wbids_in_vpu(e) {
+    if (select_wb_toggle) {
+        return;
+    }
+    console.log(e);
+    console.log('selecting wbids in vpu');
+    var geom = e.target.feature.geometry;
+    var vpu_code = e.target.feature.properties.VPU;
+    if (vpu_code in vpu_selected) {
+        for (const [key, value] of Object.entries(vpu_wbids[vpu_code])) {
+            delete wb_id_dict[key];
+        }
+        delete vpu_selected[vpu_code];
+        return;
+    }
+    fetch('/get_wbids_from_vpu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(geom),
+    })
+        .then(response => response.json())
+        .then(data => {
+            //dict of wb_id: [lat, lng]
+            for (const [key, value] of Object.entries(data)) {
+                wb_id_dict[key] = value;
+            }
+            vpu_wbids[vpu_code] = data;
+            vpu_selected[vpu_code] = true;
+            console.log('selected ' + Object.keys(data).length + ' wbids in vpu ' + vpu_code);
+            update_selected();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+}
+
 
 geometry_urls = {
     '16': 'e8ddee6a8a90484fa7a976458e79c0c3',
@@ -458,6 +506,31 @@ var wmtsLayer = L.tileLayer(baseUrl +
 setup_maplayer_toggle(wmtsLayer, ".layers.boundaries_of_vpus.toggle");
 
 addLayers();
+var vpus = [];
+function grouped_layer_callback(feature, layer) {
+    colorlayer(feature, layer);
+    layer.on("click", select_wbids_in_vpu);
+}
+var get_gpus = () => {
+    
+    
+    fetch('/get_vpu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    })
+        .then(response => response.json())
+        .then(data => {
+            vpus.push(L.geoJSON(
+                data,
+                {onEachFeature:grouped_layer_callback, opacity:0.1},
+                ).addTo(map));
+            
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+};
+get_gpus()
 
 // Register the click event listener for the map
 // add listener for the #subset-button
