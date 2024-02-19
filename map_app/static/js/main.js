@@ -66,6 +66,48 @@ function setup_style_update(layer_name, layer_settingpath, layer) {
     registered_layers[layer_name] = layer
 }
 
+var maplayers = {}
+
+function setup_maplayer_toggle(layer, layer_settingpath) {
+    var layer_path_split = layer_settingpath.split(".");
+    var layers_index = layer_path_split.indexOf("layers");
+    var layer_name = layer_path_split[layers_index+1];
+    if (!(layer_name in maplayers)) {
+        maplayers[layer_name] = [];
+    }
+    maplayers[layer_name].push(layer);
+    //toggle
+    function toggle_callback() {
+        var toggle_val = control_panel.utility.get_setting_value(layer_settingpath);
+        console.log("toggle: "+JSON.stringify(toggle_val))
+        if (toggle_val) {
+            maplayers[layer_name].forEach(l => {
+                if (!map.hasLayer(l)) {
+                    map.addLayer(l);
+                }
+            });
+        }
+        else {
+            maplayers[layer_name].forEach(l => {
+                if (map.hasLayer(l)) {
+                    map.removeLayer(l);
+                }
+            });
+        }
+    }
+    control_panel.utility.setup_callback(layer_settingpath, toggle_callback);
+    //opacity
+    var settingpath_opacity = layer_settingpath.replace(".toggle", ".opacity");
+    function opacity_callback() {
+        var opacity_val = control_panel.utility.get_setting_value(settingpath_opacity);
+        console.log("opacity: "+JSON.stringify(opacity_val))
+        maplayers[layer_name].forEach(l => {
+            l.setOpacity(opacity_val);
+        });
+    }
+    control_panel.utility.setup_callback(settingpath_opacity, opacity_callback);
+}
+
 async function update_selected() {
     console.log('updating selected');
     if (!(Object.keys(wb_id_dict).length === 0)) {
@@ -273,7 +315,7 @@ async function addLayers() {
     await Promise.all(Object.keys(geometry_urls).map(async (key) => {
         var geometryUrl = 'HS-' + geometry_urls[key] + ':' + key + '_boundaries@EPSG:900913';
         bounds = await get_boundary(geometryUrl);
-        L.tileLayer(baseUrl + geometryUrl + '@png/{z}/{x}/{-y}.png', {
+        var vpu_layer = L.tileLayer(baseUrl + geometryUrl + '@png/{z}/{x}/{-y}.png', {
             attribution: '&copy; <a href="https://nationalmap.gov/">National Map</a> contributors',
             transparent: true,
             format: 'image/png',
@@ -283,6 +325,7 @@ async function addLayers() {
             reuseTiles: true,
             bounds: bounds,
         }).addTo(map);
+        setup_maplayer_toggle(vpu_layer, ".layers.waterbasins.toggle");
     }));
     map.on('click', onMapClick);
 }
@@ -381,11 +424,17 @@ geometry_urls = {
 var map = L.map('map').setView([42, -102], 4);
 
 // Add OpenStreetMap tiles to the map
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+var streetmap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '© OpenStreetMap contributors',
     crs: L.CRS.EPSG3857
-}).addTo(map);
+});
+streetmap.on('add', function (e) {
+    streetmap.bringToBack();
+});
+streetmap.addTo(map);
+
+setup_maplayer_toggle(streetmap, ".layers.streetmap.toggle");
 
 //map.on('click', onMapClick);
 var baseUrl = "https://geoserver.hydroshare.org/geoserver/gwc/service/tms/1.0.0/";  // Base URL of the WMTS service
@@ -405,6 +454,8 @@ var wmtsLayer = L.tileLayer(baseUrl +
     maxZoom: 7,
     bounds: bounds,
 }).addTo(map);
+
+setup_maplayer_toggle(wmtsLayer, ".layers.boundaries_of_vpus.toggle");
 
 addLayers();
 
