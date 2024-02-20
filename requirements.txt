@@ -3,6 +3,8 @@ pyyaml
 pyogrio
 flask
 flask-cors
+gdal==3.2.2.1
+# https://www.reddit.com/r/django/comments/wbw9rl/comment/ii9anl6/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
 geopandas
 requests
 igraph
