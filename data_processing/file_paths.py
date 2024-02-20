@@ -33,7 +33,7 @@ class file_paths:
 
     @staticmethod
     def parquet() -> Path:
-        return file_paths.data_sources() / "conus_model_attributes.parquet"
+        return file_paths.data_sources() / "model_attributes.parquet"
 
     @staticmethod
     def conus_hydrofabric() -> Path:
