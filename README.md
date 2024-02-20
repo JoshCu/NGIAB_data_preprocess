@@ -17,15 +17,19 @@ It's a docker container managed by vscode:
 3) click through the popups in the bottom right    
 depending on what you've already got installed, it may install wsl, docker, and the vscode devcontainer extension    
 4) wait for it to finish building, view the log to watch it build
-5)
+5) 
 ```bash
 cd data_sources
 wget https://lynker-spatial.s3.amazonaws.com/v20.1/conus.gpkg
 wget https://lynker-spatial.s3.amazonaws.com/v20.1/model_attributes.parquet
+cd ..
 # to run
 ./run.sh
 
-```
+```   
+
+#### When using the tool, the map will tell you what folder it subset to inside the output folder in the root of this repo. The naming needs fixing and currently is just whatever waterbasin in the selection comes first alphabetically.
+*THERE IS NO OVERWRITE PROTECTION ON THE FOLDERS*
 
 <details>
     <summary>Manual installation</summary>
@@ -51,8 +55,7 @@ wget https://lynker-spatial.s3.amazonaws.com/v20.1/model_attributes.parquet
 cd ..
 flask -A map_app run --debug
 ```
-#### When using the tool, the map will tell you what folder it subset to inside the output folder in the root of this repo. The naming needs fixing and currently is just whatever waterbasin in the selection comes first alphabetically.
-*THERE IS NO OVERWRITE PROTECTION ON THE FOLDERS*
+
 ## Forcings generation uses exact_extract
 Full documentation [here](https://github.com/isciences/exactextract/tree/master/python)  
 On ubuntu 22.04, there's a package for GEOS, if you can't find one then [build from source :\( ](https://github.com/libgeos/geos/blob/main/INSTALL.md])
