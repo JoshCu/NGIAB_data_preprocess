@@ -289,7 +289,7 @@ def create_cfe_realization(
     supernetwork_params["geo_file_path"] = geo_file_path
     ngen["compute_parameters"]["restart_parameters"]["start_datetime"] = time["start_time"]
     # TODO figure out what ngens doing with the timesteps.
-    ngen["compute_parameters"]["forcing_parameters"]["nts"] = 
+    ngen["compute_parameters"]["forcing_parameters"]["nts"] = time["nts"]
 
     with open(base_dir / "ngen.yaml", "w") as file:
         yaml.dump(ngen, file)
