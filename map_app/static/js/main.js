@@ -289,6 +289,7 @@ async function addLayers() {
 
 async function subset() {
     console.log('subsetting');
+    document.getElementById('subset-button').disabled = true;
     fetch('/subset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -302,11 +303,15 @@ async function subset() {
         })
         .catch(error => {
             console.error('Error:', error);
+        }).finally(() => {
+            document.getElementById('subset-button').disabled = false;
         });
 }
 
 async function forcings() {
     console.log('getting forcings');
+    document.getElementById('forcings-button').disabled = true;
+
     const forcing_dir = document.getElementById('output-path').textContent;
     const start_time = document.getElementById('start-time').value;
     const end_time = document.getElementById('end-time').value;
@@ -325,11 +330,14 @@ async function forcings() {
         })
         .catch(error => {
             console.error('Error:', error);
+        }).finally(() => {
+            document.getElementById('forcings-button').disabled = false;
         });
 }
 
 async function realization() {
     console.log('getting realization');
+    document.getElementById('realization-button').disabled = true;
     const forcing_dir = document.getElementById('output-path').textContent;
     const start_time = document.getElementById('start-time').value;
     const end_time = document.getElementById('end-time').value;
@@ -348,6 +356,8 @@ async function realization() {
         })
         .catch(error => {
             console.error('Error:', error);
+        }).finally(() => {
+            document.getElementById('realization-button').disabled = false;
         });
 }
 
