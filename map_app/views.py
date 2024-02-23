@@ -21,6 +21,7 @@ from data_processing.graph_utils import get_flow_lines_in_set
 from data_processing.create_realization import create_cfe_wrapper
 
 main = Blueprint("main", __name__)
+intra_module_db = {}
 
 
 @main.route("/")
@@ -258,7 +259,22 @@ def get_forcings():
     # get the forcings
     start_time = datetime.strptime(start_time, "%Y-%m-%dT%H:%M")
     end_time = datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
-    create_forcings(start_time, end_time, wb_id)
+    # print(intra_module_db)
+    app = intra_module_db["app"]
+    debug = app.debug
+    if debug:
+        app.debug = False
+        print(f"get_forcings() disabled debug mode at {datetime.now()}")
+    try:
+        create_forcings(start_time, end_time, wb_id)
+    except Exception as e:
+        if debug:
+            app.debug = True
+        print(f"get_forcings() failed with error: {str(e)}")
+        return str(e), 500
+    if debug:
+        app.debug = True
+        print(f"get_forcings() re-enabled debug mode at {datetime.now()}")
     return "success", 200
 
 @main.route("/realization", methods=["POST"])
