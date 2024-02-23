@@ -288,6 +288,7 @@ def create_cfe_realization(
 
     supernetwork_params["geo_file_path"] = geo_file_path
     ngen["compute_parameters"]["restart_parameters"]["start_datetime"] = time["start_time"]
+    # TODO figure out what ngens doing with the timesteps.
     ngen["compute_parameters"]["forcing_parameters"]["nts"] = time["nts"]
 
     with open(base_dir / "ngen.yaml", "w") as file:
@@ -308,9 +309,11 @@ def create_cfe_wrapper(
     # without having to refactor this whole thing
     paths = file_paths(wb_id)
     cfe_atts_path = paths.config_dir() / "cfe_noahowp_attributes.csv"
-
+    with open(paths.template_troute_config(), "r") as file:
+        ngen = yaml.safe_load(file)
+    time_step_size = ngen["compute_parameters"]["dt"]
     if nts is None:
-        nts = (end_time - start_time).total_seconds() / output_interval
+        nts = (end_time - start_time).total_seconds() / time_step_size
 
     start_time = start_time.strftime("%Y-%m-%d %H:%M:%S")
     end_time = end_time.strftime("%Y-%m-%d %H:%M:%S")
