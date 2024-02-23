@@ -248,6 +248,17 @@ def subset_selection():
     subset_geopackage = subset(wb_ids)
     return subset_geopackage, 200
 
+@main.route("/subset_to_file", methods=["POST"])
+def subset_to_file():
+    wb_ids = list(json.loads(request.data.decode("utf-8")).keys())
+    print(wb_ids)
+    total_subset = get_upstream_ids(wb_ids)
+    total_subset = list(filter(lambda x: "wb" in x, total_subset))
+    total_subset = sorted(total_subset)
+    with open(file_paths.root_output_dir() / "subset.txt", "w") as f:
+        f.write("\n".join(total_subset))
+    return "success", 200
+
 
 @main.route("/forcings", methods=["POST"])
 def get_forcings():
@@ -271,7 +282,7 @@ def get_forcings():
         if debug:
             app.debug = True
         print(f"get_forcings() failed with error: {str(e)}")
-        return str(e), 500
+        raise e
     if debug:
         app.debug = True
         print(f"get_forcings() re-enabled debug mode at {datetime.now()}")

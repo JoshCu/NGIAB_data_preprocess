@@ -308,6 +308,27 @@ async function subset() {
         });
 }
 
+async function subset_to_file() {
+    console.log('subsetting to file');
+    document.getElementById('subset2-button').disabled = true;
+    fetch('/subset_to_file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(wb_id_dict),
+    })
+        .then(response => response.text())
+        .then(filename => {
+            console.log(filename);
+            // popup with the file name
+            document.getElementById('output-path').textContent = "subset to " + filename;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        }).finally(() => {
+            document.getElementById('subset2-button').disabled = false;
+        });
+}
+
 async function forcings() {
     console.log('getting forcings');
     document.getElementById('forcings-button').disabled = true;
@@ -421,6 +442,7 @@ addLayers();
 // Register the click event listener for the map
 // add listener for the #subset-button
 document.getElementById('subset-button').addEventListener('click', subset);
+document.getElementById('subset2-button').addEventListener('click', subset_to_file);
 // add listener for the #forcings-button
 document.getElementById('forcings-button').addEventListener('click', forcings);
 // add listener for the #realization-button

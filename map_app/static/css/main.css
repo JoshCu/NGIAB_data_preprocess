@@ -30,7 +30,7 @@ h1 {
 
 /* Map container styling */
 #map {
-    height: 50vh;
+    height: 80vh;
     min-height: 400px;
     width: 100%;
     margin-right: 20px;
@@ -61,6 +61,7 @@ h2 {
     margin: 20px;
     border-radius: 8px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    max-height: 20%;
 }
 
 /* Button styling */
