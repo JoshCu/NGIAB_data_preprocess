@@ -311,7 +311,7 @@ def create_cfe_wrapper(
     cfe_atts_path = paths.config_dir() / "cfe_noahowp_attributes.csv"
     with open(paths.template_troute_config(), "r") as file:
         ngen = yaml.safe_load(file)
-    time_step_size = ngen["compute_parameters"]["dt"]
+    time_step_size = ngen["compute_parameters"]["forcing_parameters"]["dt"]
     if nts is None:
         nts = (end_time - start_time).total_seconds() / time_step_size
 
