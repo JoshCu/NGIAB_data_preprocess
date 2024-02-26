@@ -9,6 +9,22 @@ var leave_lines = null;
 
 var registered_layers = {}
 
+//for VPU selection, initialize the setting to turn it on/off
+var select_by_vpu_path = ".select_by_vpu"
+
+var select_wb_toggle = !control_panel.utility.get_setting_value(select_by_vpu_path + ".toggle");
+function select_by_vpu_callback() {
+    select_wb_toggle = !control_panel.utility.get_setting_value(select_by_vpu_path + ".toggle");
+}
+control_panel.utility.setup_callback(select_by_vpu_path + ".toggle", select_by_vpu_callback);
+
+//setting to toggle need_upstream, disabling or enabling retrieval of upstream geometries
+var need_upstream = control_panel.utility.get_setting_value(select_by_vpu_path + ".need_upstream");
+function need_upstream_callback() {
+    need_upstream = control_panel.utility.get_setting_value(select_by_vpu_path + ".need_upstream");
+}
+control_panel.utility.setup_callback(select_by_vpu_path + ".need_upstream", need_upstream_callback);
+
 function setup_style_update(layer_name, layer_settingpath, layer) {
     if (layer_name in registered_layers) {
         registered_layers[layer_name] = layer;
@@ -107,6 +123,9 @@ async function update_selected() {
 }
 
 async function populate_upstream() {
+    if (!need_upstream) {
+        return;
+    }
     var layernames = [
         "merged_geometry",
         "merged_tolines",
@@ -173,7 +192,7 @@ async function populate_upstream() {
                             map.removeLayer(upstream_maps[lname][key]);
                         });
                     }
-                    console.log(data);
+                    // console.log(data);
                     // add the new layer
                     for (const [name, gjson_] of Object.entries(data)) {
                         var gjson = JSON.parse(gjson_);
@@ -214,6 +233,9 @@ function colorlayer(feature, layer) {
 
 
 function onMapClick(event) {
+    if (!select_wb_toggle) {
+        return;
+    }
     // Extract the clicked coordinates
     var lat = event.latlng.lat;
     var lng = event.latlng.lng;
@@ -382,6 +404,45 @@ async function realization() {
         });
 }
 
+var vpu_selected = {};
+var vpu_wbids = {};
+
+async function select_wbids_in_vpu(e) {
+    if (select_wb_toggle) {
+        return;
+    }
+    console.log(e);
+    console.log('selecting wbids in vpu');
+    var geom = e.target.feature.geometry;
+    var vpu_code = e.target.feature.properties.VPU;
+    if (vpu_code in vpu_selected) {
+        for (const [key, value] of Object.entries(vpu_wbids[vpu_code])) {
+            delete wb_id_dict[key];
+        }
+        delete vpu_selected[vpu_code];
+        return;
+    }
+    fetch('/get_wbids_from_vpu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(geom),
+    })
+        .then(response => response.json())
+        .then(data => {
+            //dict of wb_id: [lat, lng]
+            for (const [key, value] of Object.entries(data)) {
+                wb_id_dict[key] = value;
+            }
+            vpu_wbids[vpu_code] = data;
+            vpu_selected[vpu_code] = true;
+            console.log('selected ' + Object.keys(data).length + ' wbids in vpu ' + vpu_code);
+            update_selected();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+}
+
 
 geometry_urls = {
     '16': 'e8ddee6a8a90484fa7a976458e79c0c3',
@@ -438,6 +499,65 @@ var wmtsLayer = L.tileLayer(baseUrl +
 }).addTo(map);
 
 addLayers();
+
+var vpus = [];
+var vpu_layers = []; //store a layer
+
+function vpu_selection_toggle() {
+    if (vpus.length === 0) {
+        return;
+    }
+    var vpu_toggle = control_panel.utility.get_setting_value(select_by_vpu_path + ".toggle");
+    for (var i = 0; i < vpu_layers.length; i++) {
+        if (vpu_toggle) {
+            if (!map.hasLayer(vpu_layers[i])) {
+                map.addLayer(vpu_layers[i]);
+            }
+        }
+        else {
+            if (map.hasLayer(vpu_layers[i])) {
+                map.removeLayer(vpu_layers[i]);
+            }
+        }
+    }
+}
+control_panel.utility.setup_callback(select_by_vpu_path + ".toggle", vpu_selection_toggle);
+
+function grouped_layer_callback(feature, layer) {
+    colorlayer(feature, layer);
+    layer.on("click", select_wbids_in_vpu);
+    vpu_layers.push(layer);
+}
+var get_vpus = async () => {
+    //profile
+    var start_time = performance.now();
+    await fetch('/get_vpu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    })
+        .then(response => response.json())
+        .then(data => {
+            vpus.push(L.geoJSON(
+                data,
+                {
+                    onEachFeature:grouped_layer_callback,
+                    style: {
+                        fillOpacity: 0.1,
+                    } 
+                },
+                ).addTo(map));
+            
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        })
+        .finally(() => {
+            console.log("get_vpus took " + (performance.now() - start_time) + "ms");
+            vpu_selection_toggle();
+        });
+};
+get_vpus();
+// vpu_selection_toggle();
 
 // Register the click event listener for the map
 // add listener for the #subset-button

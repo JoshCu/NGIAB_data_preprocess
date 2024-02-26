@@ -3,6 +3,10 @@ control_panel.id = "control_panel"
 control_panel.initialized = false
 control_panel.inits = {}
 control_panel.settings = {}
+control_panel.settings.select_by_vpu = {
+    toggle: {type: "bool", default: false},
+    need_upstream: {type: "bool", default: true},
+}
 control_panel.settings.layers = {
     streetmap: {
         toggle: {type: "bool", default: true},
