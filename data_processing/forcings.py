@@ -14,6 +14,8 @@ from exactextract import exact_extract
 from data_processing.file_paths import file_paths
 from typing import Tuple
 
+import pickle
+
 
 def get_zarr_stores(start_time: str, end_time: str) -> xr.Dataset:
     forcing_zarr_files = ["lwdown", "precip", "psfc", "q2d", "swdown", "t2d", "u2d", "v2d"]
@@ -51,83 +53,109 @@ def compute_store(stores: xr.Dataset, subset_dir: Path) -> xr.Dataset:
 
 def compute_and_save(
     rasters: xr.Dataset,
-    gdf: gpd.GeoDataFrame,
-    time: str,
+    gdf_chunk: gpd.GeoDataFrame,
     forcings_dir: Path,
     variable: str,
+    times: pd.DatetimeIndex,
 ) -> pd.DataFrame:
-    
+
     raster = rasters[variable]
-    logging.debug(f"Computing {variable} for {time}")
-    results = exact_extract(raster, gdf, ["mean"], include_cols=["divide_id"], output="pandas")
-    results = results.set_index("divide_id")
-    results.columns = [variable]
-    if variable == "RAINRATE":
-        # this is wrong, todo https://github.com/NOAA-OWP/ngen/issues/509#issuecomment-1504087458
-        # should use RAINRATE from previous timestep,chose this density VVVVV factor  at random
-        results["APCP_surface"] = (results["RAINRATE"] * 3600 * 1000) / 0.998
+    logging.debug(f"Computing {variable} for all times")
+    results = exact_extract(
+        raster, gdf_chunk, ["mean"], include_cols=["divide_id"], output="pandas"
+    )
+    # Assuming results includes a time dimension now, adjust processing accordingly
+    results.set_index("divide_id", inplace=True)
 
-    results.to_csv(forcings_dir / f"temp/{variable}_{time}.csv")
-    return results
+    for i in results.index:
+        single_divide = results.loc[i].to_frame()
+        # drop first row if needed
+        if len(single_divide) != len(times):
+            single_divide = single_divide.iloc[1:]
+        divide_id = single_divide.columns[0]
+        single_divide.columns = [variable]
+        # convert row index to timestamp
+        single_divide.index = times
+        if variable == "RAINRATE":
+            single_divide["APCP_surface"] = (single_divide[variable] * 3600 * 1000) / 0.998
+        # write to file
+        single_divide.to_feather(forcings_dir / f"temp/{variable}_{divide_id}.feather")
 
 
-def split_csv_file(file_to_split: Path, timestep: str, forcings_dir: Path) -> None:
-    datestring = datetime.strptime(timestep.split("/")[-1].split(".")[0], "%Y%m%d%H%M")
-    output_directory = forcings_dir / "by_catchment"
-    command = f"""awk -F, 'NR > 1 {{output="{datestring}"; for(i=2; i<=NF; i++) output = output ", " $i; print output >> "{output_directory}/"$1".csv"}}' {file_to_split}"""
-    os.system(f"{command}")
+def chunk_gdf(gdf, chunk_size):
+    """Yield successive n-sized chunks from gdf."""
+    for i in range(0, len(gdf), chunk_size):
+        yield gdf.iloc[i : i + chunk_size]
 
 
 def compute_zonal_stats(
-    gdf: gpd.GeoDataFrame, merged_data: xr.Dataset, forcings_dir: Path
+    gdf: gpd.GeoDataFrame, merged_data: xr.Dataset, forcings_dir: Path, chunk_size=None
 ) -> None:
-    # desired output format one file per catchment, rows: one per timestep,
-    # columns: time, LWDOWN, PSFC, Q2D, RAINRATE, SWDOWN, T2D, U2D, V2D
-    # exact extract works best with many timesteps, and as many geometries as possible to reduce parallel overhead
+    logging.info("Computing zonal stats in parallel for all timesteps")
+    for file in os.listdir(forcings_dir / "temp"):
+        os.remove(forcings_dir / "temp" / file)
 
-    logging.info("Computing zonal stats")
+    variables = ["LWDOWN", "PSFC", "Q2D", "RAINRATE", "SWDOWN", "T2D", "U2D", "V2D"]
+    # compute zonal stats in parallel chunks should be an 8th of total cpu count
+    # because there are 8 variables that run in parallel
+    if chunk_size is None:
+        chunk_size = -(8 * len(gdf) // -multiprocessing.cpu_count())
+        if chunk_size < 1:
+            chunk_size = 1
+    logging.debug(f"Chunk size: {chunk_size}")
+    logging.debug(f"CPU count: {multiprocessing.cpu_count()}")
+    logging.debug(f"Total divides: {len(gdf)}")
 
-    # clear by_time files
-    for file in os.listdir(forcings_dir / "by_time"):
-        os.remove(forcings_dir / "by_time" / file)
+    gdf_chunks = list(chunk_gdf(gdf, chunk_size))
 
     with multiprocessing.Pool() as pool:
-        for time in merged_data.time.values:
-            raster = merged_data.sel(time=time)
-            timestep_result = pool.map(
-                partial(compute_and_save, raster, gdf, time, forcings_dir),
-                ["LWDOWN", "PSFC", "Q2D", "RAINRATE", "SWDOWN", "T2D", "U2D", "V2D"],
-            )
-            timestep_result = pd.concat(timestep_result, axis=1)
-            timestring = datetime.strftime(pd.to_datetime(str(time)), "%Y%m%d%H%M")
-            timestep_result.to_csv(forcings_dir / f"by_time/{timestring}.csv")
-
+        args = [
+            (merged_data, chunk, forcings_dir, variable, merged_data.time.values)
+            for chunk in gdf_chunks
+            for variable in variables
+        ]
+        pool.starmap(compute_and_save, args)
     catchment_ids = gdf["divide_id"].unique()
 
     # clear catchment files
     for file in os.listdir(forcings_dir / "by_catchment"):
         os.remove(forcings_dir / "by_catchment" / file)
 
+    # open and merge the dfs by catchment
     for cat in catchment_ids:
-        with open(forcings_dir / f"by_catchment/{cat}.csv", "w") as f:
-            # do some renaming here
-            # divide_id, LWDOWN, PSFC, Q2D, RAINRATE, APCP_surface, SWDOWN, T2D, U2D, V2D
-            f.write(
-                "time, DLWRF_surface, PRES_surface, SPFH_2maboveground, precip_rate, APCP_surface, DSWRF_surface, TMP_2maboveground, UGRD_10maboveground, VGRD_10maboveground\n"
-            )
-
-    # use awk to pivot the csvs to be one per catchment
-    for timestep_file in sorted(os.listdir(forcings_dir / "by_time")):
-        split_csv_file(forcings_dir / "by_time" / timestep_file, timestep_file, forcings_dir)
+        dfs = []
+        for variable in variables:
+            try:
+                df = pd.read_feather(forcings_dir / f"temp/{variable}_{cat}.feather")
+                dfs.append(df)
+            except FileNotFoundError:
+                logging.warning(f"File not found for {variable} and {cat}")
+        if len(dfs) > 0:
+            merged_df = pd.concat(dfs, axis=1)
+            # rename the columns
+            merged_df.columns = [
+                "DLWRF_surface",
+                "PRES_surface",
+                "SPFH_2maboveground",
+                "precip_rate",
+                "APCP_surface",
+                "DSWRF_surface",
+                "TMP_2maboveground",
+                "UGRD_10maboveground",
+                "VGRD_10maboveground",
+            ]
+            merged_df.index.name = "time"
+            merged_df.to_csv(forcings_dir / f"by_catchment/{cat}.csv")
 
     for file in os.listdir(forcings_dir / "temp"):
         os.remove(forcings_dir / "temp" / file)
+    os.rmdir(forcings_dir / "temp")
 
 
 def setup_directories(wb_id: str) -> file_paths:
     forcing_paths = file_paths(wb_id)
 
-    for folder in ["by_time", "by_catchment", "temp"]:
+    for folder in ["by_catchment", "temp"]:
         os.makedirs(forcing_paths.forcings_dir() / folder, exist_ok=True)
     return forcing_paths
 
