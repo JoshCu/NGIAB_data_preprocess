@@ -7,6 +7,8 @@ var upstream_maps = {};
 var arrive_lines = null;
 var leave_lines = null;
 
+var mouse_on_legend = false;
+
 var registered_layers = {}
 
 //for VPU selection, initialize the setting to turn it on/off
@@ -81,6 +83,117 @@ function setup_style_update(layer_name, layer_settingpath, layer) {
     control_panel.utility.setup_callback(toggle_path, toggle_callback);
     registered_layers[layer_name] = layer
 }
+
+//Create in-map Legend / Control Panel
+var legend = L.control({position: 'bottomright'});
+function updateLegend() {
+    var div = document.getElementById('legend');
+    if (!div) {
+        //Create the legend if it doesn't exist
+        div = L.DomUtil.create('div', 'info legend');
+        div.id = 'legend';
+        div.style.backgroundColor = "white";
+        div.style.opacity = "0.8";
+        div.style.borderRadius = "5px";
+        div.style.border = "1px solid black";
+        div.style.paddingBottom = "5px";
+        var label_div = L.DomUtil.create('div', 'legend_label');
+        label_div.innerHTML = '<strong>Legend</strong>';
+        label_div.style.textAlign = "center";
+        label_div.style.paddingTop = "5px";
+        label_div.style.paddingBottom = "5px";
+        div.appendChild(label_div);
+        legend.onAdd = function (map) {
+            this._div = div;
+            return this._div;
+        };
+        legend.addTo(map);
+        div.onmouseover = function () {
+            mouse_on_legend = true;
+        }
+        div.onmouseout = function () {
+            mouse_on_legend = false;
+        }
+        div.onmousedown = function (e) {
+            e.stopPropagation();
+        }
+        div.ondblclick = function (e) {
+            e.stopPropagation();
+        }
+    }
+    //Update the legend
+    var legendHTML = '<h4>Legend</h4>';
+    //For each geometry layer type, add a legend entry that contains an icon representing the layer and the layer's name
+    //The icon should have a callback registered to toggle the layer on and off
+    var layers = ["selected_wb_layer", "merged_geometry", "merged_tolines", "merged_from_nexus", "nexus_circles"];
+    var set_toggle = (layer_name, val) => {
+        control_panel.utility.set_setting_value(".geometries." + layer_name + ".toggle", val);
+    }
+    layer_divs = layers.map(layer_name => {
+        var div_l = document.getElementById("legend_" + layer_name + "_div");
+        var layer_icon = document.getElementById("legend_" + layer_name + "_icon");
+        var layer_name_div = document.getElementById("legend_" + layer_name + "_name");
+        if (!div_l) {
+            div_l = L.DomUtil.create('div', 'legend_entry');
+            div_l.id = "legend_" + layer_name + "_div";
+            div_l.style.backgroundColor = "lightgray";
+            div_l.style.fillOpacity = "0.5";
+            div_l.style.flexDirection = "row";
+            div_l.style.display = "flex";
+            div_l.style.alignItems = "left";
+            div_l.style.justifyContent = "left";
+            layer_icon = L.DomUtil.create('div', 'legend_icon');
+            layer_icon.id = "legend_" + layer_name + "_icon";
+            layer_icon.style.backgroundColor = "white";
+            layer_icon.style.width = "20px";
+            layer_icon.style.height = "20px";
+            layer_icon.style.border = "1px solid black";
+            layer_icon.style.margin = "5px";
+            layer_icon.style.borderRadius = "50%";
+            div_l.appendChild(layer_icon);
+            layer_name_div = L.DomUtil.create('div', 'legend_name');
+            layer_name_div.id = "legend_" + layer_name + "_name";
+            layer_name_div.style.margin = "5px";
+            layer_name_div.textContent = layer_name;
+            div_l.appendChild(layer_name_div);
+            layer_icon.onclick = function () {
+                var toggle_path = ".geometries." + layer_name + ".toggle";
+                var toggle_val = control_panel.utility.get_setting_value(toggle_path);
+                set_toggle(layer_name, !toggle_val);
+            }
+            div.appendChild(div_l);
+            control_panel.utility.setup_callback(".geometries." + layer_name + ".toggle", updateLegend);
+        }
+        var style = control_panel.utility.get_setting_value(".geometries." + layer_name + ".style");
+        if ("fillColor" in style) {
+            layer_icon.style.backgroundColor = style.fillColor;
+            if ("color" in style) {
+                layer_icon.style.border = "1px solid " + style.color;
+            }
+            else {
+                layer_icon.style.border = "1px solid black";
+            }
+        }
+        else if ("color" in style) {
+            layer_icon.style.backgroundColor = style.color;
+            layer_icon.style.border = "1px solid black";
+        }
+        else {
+            layer_icon.style.backgroundColor = "white";
+            layer_icon.style.border = "1px solid black";
+        }
+        var toggle_path = ".geometries." + layer_name + ".toggle";
+        var toggle_val = control_panel.utility.get_setting_value(toggle_path);
+        if (toggle_val) {
+            layer_icon.style.opacity = "1";
+        }
+        else {
+            layer_icon.style.opacity = "0.5";
+        }
+        return div_l;
+    });
+}
+
 
 async function update_selected() {
     console.log('updating selected');
@@ -233,7 +346,7 @@ function colorlayer(feature, layer) {
 
 
 function onMapClick(event) {
-    if (!select_wb_toggle) {
+    if (!select_wb_toggle || mouse_on_legend) {
         return;
     }
     // Extract the clicked coordinates
@@ -471,6 +584,9 @@ geometry_urls = {
 
 // Initialize the map
 var map = L.map('map').setView([42, -102], 4);
+
+// Attach Legend to map
+updateLegend();
 
 // Add OpenStreetMap tiles to the map
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
