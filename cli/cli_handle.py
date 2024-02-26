@@ -1,11 +1,13 @@
-import data_processing.subset as subset
-import data_processing.graph_utils as graph_utils
+import os
+import sys
+from datetime import datetime
+
+import data_processing.create_realization as realization
+import data_processing.file_paths as file_paths
 import data_processing.forcings as forcings
 import data_processing.gpkg_utils as gpkg_utils
-import data_processing.file_paths as file_paths
-import data_processing.create_realization as realization
-import sys, os
-from datetime import datetime
+import data_processing.graph_utils as graph_utils
+import data_processing.subset as subset
 
 # File for methods related to handling the command line interface
 

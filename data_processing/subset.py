@@ -1,21 +1,20 @@
 import json
+import logging
 import os
 import shutil
-import logging
+from pathlib import Path
 from typing import List
+
 import geopandas as gpd
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc_compute
 import pyarrow.csv as pc
 import pyarrow.parquet as pq
-from pathlib import Path
+
 from data_processing.file_paths import file_paths
-from data_processing.gpkg_utils import (
-    add_triggers,
-    remove_triggers,
-    subset_table,
-)
+from data_processing.gpkg_utils import (add_triggers, remove_triggers,
+                                        subset_table)
 from data_processing.graph_utils import get_upstream_ids
 
 logging.basicConfig(level=logging.INFO)
