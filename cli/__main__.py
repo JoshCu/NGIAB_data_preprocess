@@ -1,16 +1,15 @@
-from data_processing import \
-    file_paths as fp, \
-    subset, \
-    forcings, \
-    gpkg_utils, \
-    graph_utils, \
-    create_realization as realization
+from data_processing import create_realization as realization
+from data_processing import file_paths as fp
+from data_processing import forcings, gpkg_utils, graph_utils, subset
+
 file_paths = fp.file_paths
 
-import cli.cli_handle as cli_handle
-import sys, os
-from pathlib import Path
+import os
+import sys
 from datetime import datetime
+from pathlib import Path
+
+import cli.cli_handle as cli_handle
 
 # Interface file
 

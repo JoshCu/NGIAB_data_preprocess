@@ -1,10 +1,13 @@
-import sqlite3
-from pathlib import Path
 import logging
-from typing import List, Union
-import igraph as ig
-from data_processing.file_paths import file_paths
+import sqlite3
 from functools import cache
+from pathlib import Path
+from typing import List, Union
+
+import igraph as ig
+
+from data_processing.file_paths import file_paths
+
 
 def create_graph_from_gpkg(hydrofabric: Path) -> ig.Graph:
     """

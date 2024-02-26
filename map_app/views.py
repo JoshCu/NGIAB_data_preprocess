@@ -7,21 +7,18 @@ from pathlib import Path
 
 import geopandas as gpd
 import requests
+import shapely as sh
 from flask import Blueprint, jsonify, render_template, request
 from shapely import unary_union
-from shapely.geometry import Point, MultiLineString, LineString
+from shapely.geometry import LineString, MultiLineString, Point
 from shapely.wkb import loads
 
-from data_processing.file_paths import file_paths
-from data_processing.graph_utils import get_upstream_ids
-from data_processing.subset import subset
-from data_processing.forcings import create_forcings
-
-from data_processing.graph_utils import get_flow_lines_in_set
-from data_processing.create_realization import create_cfe_wrapper
-
 import data_processing.gpkg_utils as gpkg_u
-import shapely as sh
+from data_processing.create_realization import create_cfe_wrapper
+from data_processing.file_paths import file_paths
+from data_processing.forcings import create_forcings
+from data_processing.graph_utils import get_flow_lines_in_set, get_upstream_ids
+from data_processing.subset import subset
 
 main = Blueprint("main", __name__)
 intra_module_db = {}

@@ -1,10 +1,12 @@
-import sqlite3
 import logging
-from typing import List, Tuple
-from pathlib import Path
-import geopandas as gpd
-from data_processing.file_paths import file_paths
+import sqlite3
 from functools import cache
+from pathlib import Path
+from typing import List, Tuple
+
+import geopandas as gpd
+
+from data_processing.file_paths import file_paths
 
 
 def copy_rTree_tables(
