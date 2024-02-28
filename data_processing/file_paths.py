@@ -47,6 +47,10 @@ class file_paths:
     def template_nc() -> Path:
         return file_paths.data_sources() / "template.nc"
 
+    @staticmethod
+    def dev_file() -> Path:
+        return Path(__file__).parent.parent / ".dev"
+
     def subset_dir(self) -> Path:
         return file_paths.root_output_dir() / self.wb_id
 

@@ -1,8 +1,6 @@
 import logging
 import multiprocessing
 import os
-from datetime import datetime
-from functools import partial
 from pathlib import Path
 from typing import Tuple
 
@@ -14,40 +12,39 @@ from exactextract import exact_extract
 
 from data_processing.file_paths import file_paths
 
-import pickle
 
-
-def get_zarr_stores(start_time: str, end_time: str) -> xr.Dataset:
-    forcing_zarr_files = ["lwdown", "precip", "psfc", "q2d", "swdown", "t2d", "u2d", "v2d"]
-    urls = [
-        f"s3://noaa-nwm-retrospective-3-0-pds/CONUS/zarr/forcing/{f}.zarr"
-        for f in forcing_zarr_files
+def load_zarr_datasets(start_time: str, end_time: str) -> xr.Dataset:
+    """Load zarr datasets from S3 within the specified time range."""
+    forcing_vars = ["lwdown", "precip", "psfc", "q2d", "swdown", "t2d", "u2d", "v2d"]
+    s3_urls = [
+        f"s3://noaa-nwm-retrospective-3-0-pds/CONUS/zarr/forcing/{var}.zarr"
+        for var in forcing_vars
     ]
-    s3_file_stores = [s3fs.S3Map(url, s3=s3fs.S3FileSystem(anon=True)) for url in urls]
-    time_slice = slice(start_time, end_time)
-    lazy_store = xr.open_mfdataset(
-        s3_file_stores, combine="by_coords", parallel=True, engine="zarr"
+    s3_stores = [s3fs.S3Map(url, s3=s3fs.S3FileSystem(anon=True)) for url in s3_urls]
+
+    dataset = xr.open_mfdataset(s3_stores, combine="by_coords", parallel=True, engine="zarr").sel(
+        time=slice(start_time, end_time)
     )
-    lazy_store = lazy_store.sel(time=time_slice)
-    return lazy_store
+    return dataset
 
 
-def get_gdf(geopackage_path: str, projection: str) -> gpd.GeoDataFrame:
-    gdf = gpd.read_file(geopackage_path, layer="divides")
-    gdf = gdf.to_crs(projection)
+def load_geodataframe(geopackage_path: str, projection: str) -> gpd.GeoDataFrame:
+    """Load and project a geodataframe from a given path and projection."""
+    gdf = gpd.read_file(geopackage_path, layer="divides").to_crs(projection)
     return gdf
 
 
-def clip_stores_to_catchments(
-    store: xr.Dataset, bounds: Tuple[float, float, float, float]
+def clip_dataset_to_bounds(
+    dataset: xr.Dataset, bounds: Tuple[float, float, float, float]
 ) -> xr.Dataset:
-    clipped_store = store.sel(x=slice(bounds[0], bounds[2]), y=slice(bounds[1], bounds[3]))
-    return clipped_store
+    """Clip the dataset to specified geographical bounds."""
+    return dataset.sel(x=slice(bounds[0], bounds[2]), y=slice(bounds[1], bounds[3]))
 
 
 def compute_store(stores: xr.Dataset, subset_dir: Path) -> xr.Dataset:
     merged_data = stores.compute()
-    merged_data.to_netcdf(subset_dir)
+    if file_paths.dev_file().exists():
+        merged_data.to_netcdf(subset_dir)
     return merged_data
 
 
@@ -58,13 +55,16 @@ def compute_and_save(
     variable: str,
     times: pd.DatetimeIndex,
 ) -> pd.DataFrame:
-
+    """
+    Compute and save zonal stats for a given variable on a given chunk of the geodataframe.
+    This function is called in parallel.
+    """
     raster = rasters[variable]
     logging.debug(f"Computing {variable} for all times")
     results = exact_extract(
         raster, gdf_chunk, ["mean"], include_cols=["divide_id"], output="pandas"
     )
-    # Assuming results includes a time dimension now, adjust processing accordingly
+
     results.set_index("divide_id", inplace=True)
 
     for i in results.index:
@@ -96,12 +96,17 @@ def compute_zonal_stats(
         os.remove(forcings_dir / "temp" / file)
 
     variables = ["LWDOWN", "PSFC", "Q2D", "RAINRATE", "SWDOWN", "T2D", "U2D", "V2D"]
-    # compute zonal stats in parallel chunks should be an 8th of total cpu count
-    # because there are 8 variables that run in parallel
+    # compute zonal stats in parallel, chunks should be an 8th of total cpu count
+    # computation is done once per chunk per variable aka chunks * variables
+
     if chunk_size is None:
-        chunk_size = -(8 * len(gdf) // -multiprocessing.cpu_count())
+        # the - signs invert the // floor division operator to round up instead of down
+        chunk_size = -(len(variables) * len(gdf) // -multiprocessing.cpu_count())
+
         if chunk_size < 1:
+            # division by zero protection
             chunk_size = 1
+
     logging.debug(f"Chunk size: {chunk_size}")
     logging.debug(f"CPU count: {multiprocessing.cpu_count()}")
     logging.debug(f"Total divides: {len(gdf)}")
@@ -160,20 +165,20 @@ def setup_directories(wb_id: str) -> file_paths:
     return forcing_paths
 
 
-def create_forcings(start_time: str, end_time: str, wb_id: str) -> None:
-    forcing_paths = setup_directories(wb_id)
+def create_forcings(start_time: str, end_time: str, output_folder_name: str) -> None:
+    forcing_paths = setup_directories(output_folder_name)
     projection = xr.open_dataset(forcing_paths.template_nc(), engine="netcdf4").crs.esri_pe_string
     logging.info("Got projection from grid file")
 
-    gdf = get_gdf(forcing_paths.geopackage_path(), projection)
+    gdf = load_geodataframe(forcing_paths.geopackage_path(), projection)
     logging.info("Got gdf")
 
     if not os.path.exists(forcing_paths.cached_nc_file()):
         logging.info("No cached nc file found")
-        lazy_store = get_zarr_stores(start_time, end_time)
+        lazy_store = load_zarr_datasets(start_time, end_time)
         logging.info("Got zarr stores")
 
-        clipped_store = clip_stores_to_catchments(lazy_store, gdf.total_bounds)
+        clipped_store = clip_dataset_to_bounds(lazy_store, gdf.total_bounds)
         logging.info("Clipped stores")
 
         merged_data = compute_store(clipped_store, forcing_paths.cached_nc_file())
@@ -186,9 +191,11 @@ def create_forcings(start_time: str, end_time: str, wb_id: str) -> None:
 
 
 if __name__ == "__main__":
+    # Example usage
     start_time = "2010-01-01 00:00"
     end_time = "2010-01-02 00:00"
-    wb_id = "wb-1643991"
-    logging.basicConfig(level=logging.INFO)
-    create_forcings(start_time, end_time, wb_id)
-    # takes 9m21s on i9-10850k 20 cores
+    output_folder_name = "wb-1643991"
+    # looks in output/wb-1643991/config for the geopackage wb-1643991_subset.gpkg
+    # puts forcings in output/wb-1643991/forcings
+    logging.basicConfig(level=logging.DEBUG)
+    create_forcings(start_time, end_time, output_folder_name)
