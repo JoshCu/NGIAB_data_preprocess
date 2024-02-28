@@ -105,7 +105,7 @@ def subset_table(table: str, ids: List[str], hydrofabric: str, subset_gpkg_name:
 def remove_triggers(dest_db: str) -> List[Tuple]:
     """
     Remove triggers from the specified database.
-    As they break any inserts we do.
+    As they break any inserts we don't remove them.
     Args:
         dest_db (str): The path to the destination database.
 
@@ -139,8 +139,11 @@ def add_triggers(triggers: List[Tuple], dest_db: str) -> None:
     con.commit()
     con.close()
 
+
 @cache
 def get_vpu_gdf():
-    vpu_boundaries = gpd.read_file(file_paths.data_sources()/"vpu_boundaries.shp", engine="pyogrio")
-    vpu_boundaries=vpu_boundaries.to_crs(epsg=4326)
+    vpu_boundaries = gpd.read_file(
+        file_paths.data_sources() / "vpu_boundaries.shp", engine="pyogrio"
+    )
+    vpu_boundaries = vpu_boundaries.to_crs(epsg=4326)
     return vpu_boundaries
