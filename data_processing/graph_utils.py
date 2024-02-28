@@ -83,6 +83,8 @@ def get_upstream_ids(names: Union[str, List[str]]) -> List[str]:
         names = [names]
     parent_ids = []
     for name in names:
+        if name in parent_ids:
+            continue
         node_index = graph.vs.find(name=name).index
         upstream_nodes = graph.subcomponent(node_index, mode="IN")
         parent_ids.extend([graph.vs[node_id]["name"] for node_id in upstream_nodes])
