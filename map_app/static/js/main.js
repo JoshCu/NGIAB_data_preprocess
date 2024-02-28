@@ -408,7 +408,6 @@ async function addLayers() {
         var geometryUrl = 'HS-' + geometry_urls[key] + ':' + key + '_boundaries@EPSG:900913';
         bounds = await get_boundary(geometryUrl);
         L.tileLayer(baseUrl + geometryUrl + '@png/{z}/{x}/{-y}.png', {
-            attribution: '&copy; <a href="https://nationalmap.gov/">National Map</a> contributors',
             transparent: true,
             format: 'image/png',
             opacity: 0.5,
