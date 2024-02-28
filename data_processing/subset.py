@@ -115,7 +115,7 @@ def subset(wb_ids: List[str], hydrofabric: str = file_paths.conus_hydrofabric())
     make_geojson(gpkg_name)
 
     move_files_to_config_dir(subset_output_dir)
-
+    logger.info(f"Subset complete for {upstream_ids}")
     return str(subset_output_dir.absolute())
 
 

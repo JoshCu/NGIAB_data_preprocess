@@ -323,6 +323,10 @@ def get_logs():
             # Read the last 100 lines
             lines = file.readlines()[-100:]
             lines = [line.strip() for line in lines]
-            return jsonify({"logs": lines}), 200
+            # reverse the lines so the most recent is first
+            # easier than fixgin the frontend to auto scoll to the bottom
+            reversed_lines = list(reversed(lines))
+            # manual cast because jsonify is awful at type evaluation
+            return jsonify({"logs": reversed_lines}), 200
     except Exception as e:
         return jsonify({"error": str(e)})

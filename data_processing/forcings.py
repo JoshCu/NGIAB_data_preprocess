@@ -62,7 +62,7 @@ def compute_and_save(
     This function is called in parallel.
     """
     raster = rasters[variable]
-    logging.debug(f"Computing {variable} for all times")
+    logger.debug(f"Computing {variable} for all times")
     results = exact_extract(
         raster, gdf_chunk, ["mean"], include_cols=["divide_id"], output="pandas"
     )
@@ -93,7 +93,7 @@ def chunk_gdf(gdf, chunk_size):
 def compute_zonal_stats(
     gdf: gpd.GeoDataFrame, merged_data: xr.Dataset, forcings_dir: Path, chunk_size=None
 ) -> None:
-    logging.info("Computing zonal stats in parallel for all timesteps")
+    logger.info("Computing zonal stats in parallel for all timesteps")
     for file in os.listdir(forcings_dir / "temp"):
         os.remove(forcings_dir / "temp" / file)
 
@@ -109,9 +109,9 @@ def compute_zonal_stats(
             # division by zero protection
             chunk_size = 1
 
-    logging.debug(f"Chunk size: {chunk_size}")
-    logging.debug(f"CPU count: {multiprocessing.cpu_count()}")
-    logging.debug(f"Total divides: {len(gdf)}")
+    logger.debug(f"Chunk size: {chunk_size}")
+    logger.debug(f"CPU count: {multiprocessing.cpu_count()}")
+    logger.debug(f"Total divides: {len(gdf)}")
 
     gdf_chunks = list(chunk_gdf(gdf, chunk_size))
 
@@ -136,7 +136,7 @@ def compute_zonal_stats(
                 df = pd.read_feather(forcings_dir / f"temp/{variable}_{cat}.feather")
                 dfs.append(df)
             except FileNotFoundError:
-                logging.warning(f"File not found for {variable} and {cat}")
+                logger.warning(f"File not found for {variable} and {cat}")
         if len(dfs) > 0:
             merged_df = pd.concat(dfs, axis=1)
             # rename the columns
@@ -170,25 +170,29 @@ def setup_directories(wb_id: str) -> file_paths:
 def create_forcings(start_time: str, end_time: str, output_folder_name: str) -> None:
     forcing_paths = setup_directories(output_folder_name)
     projection = xr.open_dataset(forcing_paths.template_nc(), engine="netcdf4").crs.esri_pe_string
-    logging.info("Got projection from grid file")
+    logger.info("Got projection from grid file")
 
     gdf = load_geodataframe(forcing_paths.geopackage_path(), projection)
-    logging.info("Got gdf")
+    logger.info("Got gdf")
 
     if not os.path.exists(forcing_paths.cached_nc_file()):
-        logging.info("No cached nc file found")
+        logger.info("No cached nc file found")
+        logger.info("Loading zarr stores, this may take a while.")
         lazy_store = load_zarr_datasets(start_time, end_time)
-        logging.info("Got zarr stores")
+        logger.info("Got zarr stores")
 
         clipped_store = clip_dataset_to_bounds(lazy_store, gdf.total_bounds)
-        logging.info("Clipped stores")
+        logger.info("Clipped stores")
 
         merged_data = compute_store(clipped_store, forcing_paths.cached_nc_file())
-        logging.info("Computed store")
+        logger.info("Computed store")
+    else:
+        merged_data = xr.open_dataset(forcing_paths.cached_nc_file())
+        logger.info("Opened cached nc file")
 
-    merged_data = xr.open_dataset(forcing_paths.cached_nc_file())
     print(type(merged_data))
-    logging.info(f"Opened cached nc file: [{forcing_paths.cached_nc_file()}]")
+    logger.info(f"Opened cached nc file: [{forcing_paths.cached_nc_file()}]")
+    logger.info("Computing zonal stats")
     compute_zonal_stats(gdf, merged_data, forcing_paths.forcings_dir())
 
 
@@ -199,5 +203,5 @@ if __name__ == "__main__":
     output_folder_name = "wb-1643991"
     # looks in output/wb-1643991/config for the geopackage wb-1643991_subset.gpkg
     # puts forcings in output/wb-1643991/forcings
-    logging.basicConfig(level=logging.DEBUG)
+    logger.basicConfig(level=logging.DEBUG)
     create_forcings(start_time, end_time, output_folder_name)

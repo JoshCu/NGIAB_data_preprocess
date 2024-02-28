@@ -30,12 +30,12 @@ def create_graph_from_gpkg(hydrofabric: Path) -> ig.Graph:
         edges = con.execute(sql_query).fetchall()
         con.close()
     except sqlite3.Error as e:
-        logging.error(f"SQLite error: {e}")
+        logger.error(f"SQLite error: {e}")
         raise
 
     # Remove duplicate edges for an accurate representation of the network
     unique_edges = list(set(edges))
-    logging.debug("Building hydrological graph network with igraph.")
+    logger.debug("Building hydrological graph network with igraph.")
     network_graph = ig.Graph.TupleList(unique_edges, directed=True)
     return network_graph
 
@@ -53,17 +53,17 @@ def get_graph() -> ig.Graph:
     """
     pickled_graph_path = file_paths.hydrofabric_graph()
     if not pickled_graph_path.exists():
-        logging.debug("Graph pickle does not exist, creating a new graph.")
+        logger.debug("Graph pickle does not exist, creating a new graph.")
         network_graph = create_graph_from_gpkg(file_paths.conus_hydrofabric())
         network_graph.write_pickle(pickled_graph_path)
     else:
         try:
             network_graph = ig.Graph.Read_Pickle(pickled_graph_path)
         except Exception as e:
-            logging.error(f"Error loading graph pickle: {e}")
+            logger.error(f"Error loading graph pickle: {e}")
             raise
 
-    logging.debug(network_graph.summary())
+    logger.debug(network_graph.summary())
     return network_graph
 
 

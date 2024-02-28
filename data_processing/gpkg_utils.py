@@ -56,7 +56,7 @@ def insert_data(con: sqlite3.Connection, table: str, contents: List[Tuple]) -> N
     if len(contents) == 0:
         return
 
-    logging.info(f"Inserting {table}")
+    logger.info(f"Inserting {table}")
     placeholders = ",".join("?" * len(contents[0]))
     con.executemany(f"INSERT INTO {table} VALUES ({placeholders})", contents)
     con.commit()
@@ -75,7 +75,7 @@ def subset_table(table: str, ids: List[str], hydrofabric: str, subset_gpkg_name:
     if table == "flowpath_edge_list":
         table = "network"
 
-    logging.info(f"Subsetting {table} in {subset_gpkg_name}")
+    logger.info(f"Subsetting {table} in {subset_gpkg_name}")
     source_db = sqlite3.connect(hydrofabric)
     dest_db = sqlite3.connect(subset_gpkg_name)
 
@@ -93,7 +93,7 @@ def subset_table(table: str, ids: List[str], hydrofabric: str, subset_gpkg_name:
     if table in ["divides", "flowpaths", "nexus", "hydrolocations", "lakes"]:
         copy_rTree_tables(table, ids, source_db, dest_db)
 
-    logging.info("Inserting final data")
+    logger.info("Inserting final data")
 
     if table == "network":
         table = "flowpath_edge_list"
