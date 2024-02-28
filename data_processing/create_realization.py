@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 
 import json
+import shutil
 import typing
 from collections import OrderedDict
+from datetime import datetime
 from pathlib import Path
-import shutil
+
 import pandas
 import yaml
+
 from data_processing.file_paths import file_paths
-from datetime import datetime
 
 
 class GlobalRealization:

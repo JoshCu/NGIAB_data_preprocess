@@ -7,20 +7,21 @@ from pathlib import Path
 
 import geopandas as gpd
 import requests
+import shapely as sh
 from flask import Blueprint, jsonify, render_template, request
 from shapely import unary_union
-from shapely.geometry import Point, MultiLineString, LineString
+from shapely.geometry import LineString, MultiLineString, Point
 from shapely.wkb import loads
 
-from data_processing.file_paths import file_paths
-from data_processing.graph_utils import get_upstream_ids
-from data_processing.subset import subset
-from data_processing.forcings import create_forcings
-
-from data_processing.graph_utils import get_flow_lines_in_set
+import data_processing.gpkg_utils as gpkg_u
 from data_processing.create_realization import create_cfe_wrapper
+from data_processing.file_paths import file_paths
+from data_processing.forcings import create_forcings
+from data_processing.graph_utils import get_flow_lines_in_set, get_upstream_ids
+from data_processing.subset import subset
 
 main = Blueprint("main", __name__)
+intra_module_db = {}
 
 
 @main.route("/")
@@ -247,6 +248,17 @@ def subset_selection():
     subset_geopackage = subset(wb_ids)
     return subset_geopackage, 200
 
+@main.route("/subset_to_file", methods=["POST"])
+def subset_to_file():
+    wb_ids = list(json.loads(request.data.decode("utf-8")).keys())
+    print(wb_ids)
+    total_subset = get_upstream_ids(wb_ids)
+    total_subset = list(filter(lambda x: "wb" in x, total_subset))
+    total_subset = sorted(total_subset)
+    with open(file_paths.root_output_dir() / "subset.txt", "w") as f:
+        f.write("\n".join(total_subset))
+    return "success", 200
+
 
 @main.route("/forcings", methods=["POST"])
 def get_forcings():
@@ -258,7 +270,22 @@ def get_forcings():
     # get the forcings
     start_time = datetime.strptime(start_time, "%Y-%m-%dT%H:%M")
     end_time = datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
-    create_forcings(start_time, end_time, wb_id)
+    # print(intra_module_db)
+    app = intra_module_db["app"]
+    debug = app.debug
+    if debug:
+        app.debug = False
+        print(f"get_forcings() disabled debug mode at {datetime.now()}")
+    try:
+        create_forcings(start_time, end_time, wb_id)
+    except Exception as e:
+        if debug:
+            app.debug = True
+        print(f"get_forcings() failed with error: {str(e)}")
+        raise e
+    if debug:
+        app.debug = True
+        print(f"get_forcings() re-enabled debug mode at {datetime.now()}")
     return "success", 200
 
 @main.route("/realization", methods=["POST"])
@@ -273,3 +300,21 @@ def get_realization():
     end_time = datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
     create_cfe_wrapper(wb_id, start_time, end_time)
     return "success", 200
+
+@main.route("/get_vpu", methods=["POST"])
+def get_vpu():
+    vpu_boundaries = gpkg_u.get_vpu_gdf()
+    return vpu_boundaries.to_json(), 200
+
+@main.route("/get_wbids_from_vpu", methods=["POST"])
+def get_wbids_from_vpu():
+    vpu = json.loads(request.data.decode("utf-8"))
+    vpu = sh.geometry.shape(vpu)
+    #convert to crs 5070
+    vpu = gpd.GeoDataFrame({"geometry": [vpu]}, crs="EPSG:4326")
+    vpu = vpu.to_crs(epsg=5070)
+    wbs = gpd.read_file(file_paths.data_sources()/"conus.gpkg", layer="divides", mask=vpu)
+    wbs = wbs.to_crs(epsg=4326)
+    wbs = wbs[wbs["id"].notna()]
+    #return dict[id: [lat, lon]]
+    return json.dumps(dict(zip(wbs["id"], zip(wbs["geometry"].centroid.x, wbs["geometry"].centroid.y)))), 200

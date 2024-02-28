@@ -3,6 +3,10 @@ control_panel.id = "control_panel"
 control_panel.initialized = false
 control_panel.inits = {}
 control_panel.settings = {}
+control_panel.settings.select_by_vpu = {
+    toggle: {type: "bool", default: false},
+    need_upstream: {type: "bool", default: true},
+}
 control_panel.settings.layers = {
     streetmap: {
         toggle: {type: "bool", default: true},
@@ -571,6 +575,17 @@ control_panel.utility.setup_group_callback = function(key, func) {
             }
         }
     }
+}
+control_panel.utility.set_setting_value = function (key, value) {
+    control_panel.values[key] = value;
+    var elem = document.getElementById(key);
+    if (elem.type == "checkbox") {
+        elem.checked = value;
+    }
+    else {
+        elem.value = value;
+    }
+    control_panel.utility.trigger_callback(key);
 }
 control_panel.init_dom()
 control_panel.setup_settings()

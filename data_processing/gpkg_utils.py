@@ -1,7 +1,12 @@
-import sqlite3
 import logging
-from typing import List, Tuple
+import sqlite3
+from functools import cache
 from pathlib import Path
+from typing import List, Tuple
+
+import geopandas as gpd
+
+from data_processing.file_paths import file_paths
 
 
 def copy_rTree_tables(
@@ -75,9 +80,7 @@ def subset_table(table: str, ids: List[str], hydrofabric: str, subset_gpkg_name:
     if table == "nexus":
         sql_query = f"SELECT toid FROM divides"
         contents = dest_db.execute(sql_query).fetchall()
-        nexus_ids = [str(x[0]) for x in contents]
-        ids = list(set(ids + nexus_ids))
-        ids = [f"nex-{x.split('-')[1]}" for x in ids]
+        ids = [str(x[0]) for x in contents]
 
     ids = [f"'{x}'" for x in ids]
     sql_query = f"SELECT * FROM {table} WHERE id IN ({','.join(ids)})"
@@ -135,3 +138,9 @@ def add_triggers(triggers: List[Tuple], dest_db: str) -> None:
 
     con.commit()
     con.close()
+
+@cache
+def get_vpu_gdf():
+    vpu_boundaries = gpd.read_file(file_paths.data_sources()/"vpu_boundaries.shp", engine="pyogrio")
+    vpu_boundaries=vpu_boundaries.to_crs(epsg=4326)
+    return vpu_boundaries
