@@ -1,20 +1,15 @@
 import json
-import logging
 import os
 import shutil
-from pathlib import Path
+import logging
 from typing import List
-
 import geopandas as gpd
 import pandas as pd
-import pyarrow as pa
-import pyarrow.compute as pc_compute
-import pyarrow.csv as pc
-import pyarrow.parquet as pq
+import pyarrow
 
+from pathlib import Path
 from data_processing.file_paths import file_paths
-from data_processing.gpkg_utils import (add_triggers, remove_triggers,
-                                        subset_table)
+from data_processing.gpkg_utils import add_triggers, remove_triggers, subset_table
 from data_processing.graph_utils import get_upstream_ids
 
 logging.basicConfig(level=logging.INFO)
@@ -44,7 +39,7 @@ def create_subset_gpkg(ids: List[str], hydrofabric: str) -> Path:
         "flowpath_attributes",
         "hydrolocations",
         # Commented out for v20.1 gpkg
-        #"lakes",
+        # "lakes",
     ]
 
     for table in subset_tables:
@@ -60,13 +55,13 @@ def subset_parquet(ids: List[str]) -> None:
     output_dir = file_paths.root_output_dir() / ids[0]
     logger.debug(str(parquet_path))
     logger.info("Reading parquet")
-    table = pq.read_table(parquet_path)
+    table = pyarrow.parquet.read_table(parquet_path)
     logger.info("Filtering parquet")
     filtered_table = table.filter(
-        pc_compute.is_in(table.column("divide_id"), value_set=pa.array(cat_ids))
+        pyarrow.compute.is_in(table.column("divide_id"), value_set=pyarrow.array(cat_ids))
     )
     logger.info("Writing parquet")
-    pc.write_csv(filtered_table, output_dir / "cfe_noahowp_attributes.csv")
+    pyarrow.csv.write_csv(filtered_table, output_dir / "cfe_noahowp_attributes.csv")
 
 
 def make_x_walk(hydrofabric: str, out_dir: str) -> None:
@@ -89,7 +84,6 @@ def make_geojson(hydrofabric: Path) -> None:
         flowpaths = gpd.read_file(hydrofabric, layer="flowpaths", engine="pyogrio")
         edge_list = gpd.read_file(hydrofabric, layer="flowpath_edge_list", engine="pyogrio")
 
-        # rename data keys id -> wb_id and divide_id -> id
         catchments = catchments.rename(columns={"id": "wb_id"})
         catchments = catchments.rename(columns={"divide_id": "id"})
 
@@ -108,11 +102,7 @@ def subset(wb_ids: List[str], hydrofabric: str = file_paths.conus_hydrofabric())
     if isinstance(wb_ids, str):
         wb_ids = [wb_ids]
 
-    upstream_ids = []
-    for id in wb_ids:
-        upstream_ids += get_upstream_ids(id)
-    upstream_ids = sorted(list(set(upstream_ids)))
-
+    upstream_ids = get_upstream_ids(wb_ids)
     subset_output_dir = file_paths.root_output_dir() / upstream_ids[0]
     remove_existing_output_dir(subset_output_dir)
 
