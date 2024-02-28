@@ -94,9 +94,8 @@ function updateLegend() {
         div.id = 'legend';
         div.style.backgroundColor = "white";
         div.style.opacity = "0.8";
+        div.style.overflow = "hidden";
         div.style.borderRadius = "5px";
-        div.style.border = "1px solid black";
-        div.style.paddingBottom = "5px";
         var label_div = L.DomUtil.create('div', 'legend_label');
         label_div.innerHTML = '<strong>Legend</strong>';
         label_div.style.textAlign = "center";
@@ -613,7 +612,7 @@ bounds = L.latLngBounds(southWest, northEast);
 
 var wmtsLayer = L.tileLayer(baseUrl +
     boundaries_of_vpus + '@png/{z}/{x}/{-y}.png', {
-    attribution: '&copy; <a href="https://nationalmap.gov/">National Map</a> contributors',
+    attribution: '&copy; <a href="https://www.hydroshare.org/">Hydroshare</a> contributors',
     transparent: true,
     format: 'image/png',
     opacity: 1,

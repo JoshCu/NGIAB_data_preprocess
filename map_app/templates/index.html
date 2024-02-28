@@ -62,15 +62,14 @@
         </section>
 
         <section id="forcings">
-            <p>
-                <strong>If you're making new forcings from the same waterbasin selection, you need to rerun subset, or
-                    manually delete merged_data.nc from the subset folder shown above</strong>
-            </p>
+            <div id="forcings-warning">
+                <strong>Warning: This will take a while</strong>
+            </div>
             <button id="forcings-button">Create Forcing From Zarrs</button>
             <img class="loading" src="{{ url_for('static', filename='resources/loading.gif') }}" alt="Loading"
                 id="forcings-loading">
             <!-- <p>Creates a cached netcdf after fetching from S3.</p> -->
-            <strong>Warning: This will take a while</strong>
+
             <div id="forcings-output-path"></div>
         </section>
 
