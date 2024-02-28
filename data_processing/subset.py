@@ -6,13 +6,14 @@ from typing import List
 import geopandas as gpd
 import pandas as pd
 import pyarrow
+from pyarrow import csv as pa_csv, parquet as pa_parquet, compute as pa_compute
 
 from pathlib import Path
 from data_processing.file_paths import file_paths
 from data_processing.gpkg_utils import add_triggers, remove_triggers, subset_table
 from data_processing.graph_utils import get_upstream_ids
 
-logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 
@@ -55,13 +56,13 @@ def subset_parquet(ids: List[str]) -> None:
     output_dir = file_paths.root_output_dir() / ids[0]
     logger.debug(str(parquet_path))
     logger.info("Reading parquet")
-    table = pyarrow.parquet.read_table(parquet_path)
+    table = pa_parquet.read_table(parquet_path)
     logger.info("Filtering parquet")
     filtered_table = table.filter(
-        pyarrow.compute.is_in(table.column("divide_id"), value_set=pyarrow.array(cat_ids))
+        pa_compute.is_in(table.column("divide_id"), value_set=pyarrow.array(cat_ids))
     )
     logger.info("Writing parquet")
-    pyarrow.csv.write_csv(filtered_table, output_dir / "cfe_noahowp_attributes.csv")
+    pa_csv.write_csv(filtered_table, output_dir / "cfe_noahowp_attributes.csv")
 
 
 def make_x_walk(hydrofabric: str, out_dir: str) -> None:

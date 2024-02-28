@@ -8,6 +8,8 @@ import geopandas as gpd
 
 from data_processing.file_paths import file_paths
 
+logger = logging.getLogger(__name__)
+
 
 def copy_rTree_tables(
     table: str, ids: List[str], source_db: sqlite3.Connection, dest_db: sqlite3.Connection

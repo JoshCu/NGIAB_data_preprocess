@@ -85,7 +85,7 @@ function setup_style_update(layer_name, layer_settingpath, layer) {
 }
 
 //Create in-map Legend / Control Panel
-var legend = L.control({position: 'bottomright'});
+var legend = L.control({ position: 'bottomright' });
 function updateLegend() {
     var div = document.getElementById('legend');
     if (!div) {
@@ -425,6 +425,7 @@ async function addLayers() {
 async function subset() {
     console.log('subsetting');
     document.getElementById('subset-button').disabled = true;
+    document.getElementById('subset-loading').style.visibility = "visible";
     fetch('/subset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -440,12 +441,14 @@ async function subset() {
             console.error('Error:', error);
         }).finally(() => {
             document.getElementById('subset-button').disabled = false;
+            document.getElementById('subset-loading').style.visibility = "hidden";
         });
 }
 
 async function subset_to_file() {
     console.log('subsetting to file');
     document.getElementById('subset2-button').disabled = true;
+    document.getElementById('subset2-loading').style.visibility = "visible";
     fetch('/subset_to_file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -461,12 +464,14 @@ async function subset_to_file() {
             console.error('Error:', error);
         }).finally(() => {
             document.getElementById('subset2-button').disabled = false;
+            document.getElementById('subset2-loading').style.visibility = "hidden";
         });
 }
 
 async function forcings() {
     console.log('getting forcings');
     document.getElementById('forcings-button').disabled = true;
+    document.getElementById('forcings-loading').style.visibility = "visible";
 
     const forcing_dir = document.getElementById('output-path').textContent;
     const start_time = document.getElementById('start-time').value;
@@ -488,6 +493,8 @@ async function forcings() {
             console.error('Error:', error);
         }).finally(() => {
             document.getElementById('forcings-button').disabled = false;
+            document.getElementById('forcings-loading').style.visibility = "hidden";
+
         });
 }
 
@@ -656,13 +663,13 @@ var get_vpus = async () => {
             vpus.push(L.geoJSON(
                 data,
                 {
-                    onEachFeature:grouped_layer_callback,
+                    onEachFeature: grouped_layer_callback,
                     style: {
                         fillOpacity: 0.1,
-                    } 
+                    }
                 },
-                ).addTo(map));
-            
+            ).addTo(map));
+
         })
         .catch(error => {
             console.error('Error:', error);

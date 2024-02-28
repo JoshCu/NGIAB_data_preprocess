@@ -39,7 +39,11 @@
             <h2>Selected Basins</h2>
             <div id="selected-basins">None - get clicking!</div>
             <button id="subset-button">Subset</button>
+            <img class="loading" src="{{ url_for('static', filename='resources/loading.gif') }}" alt="Loading"
+                id="subset-loading">
             <button id="subset2-button">Output list to file</button>
+            <img class="loading" src="{{ url_for('static', filename='resources/loading.gif') }}" alt="Loading"
+                id="subset2-loading">
             <div id="output-path"></div>
         </section>
 
@@ -63,6 +67,8 @@
                     manually delete merged_data.nc from the subset folder shown above</strong>
             </p>
             <button id="forcings-button">Create Forcing From Zarrs</button>
+            <img class="loading" src="{{ url_for('static', filename='resources/loading.gif') }}" alt="Loading"
+                id="forcings-loading">
             <!-- <p>Creates a cached netcdf after fetching from S3.</p> -->
             <strong>Warning: This will take a while</strong>
             <div id="forcings-output-path"></div>
@@ -73,7 +79,14 @@
             <div id="realization-output-path"></div>
         </section>
     </main>
-
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/console.css') }}">
+    <div id="console">
+        <div class="center">
+            <button id="toggleConsole">Hide Console</button>
+        </div>
+        <div id="logOutput"></div>
+    </div>
+    <script src="{{ url_for('static', filename='js/console.js') }}"></script>
 
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"

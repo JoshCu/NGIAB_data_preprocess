@@ -8,6 +8,8 @@ import igraph as ig
 
 from data_processing.file_paths import file_paths
 
+logger = logging.getLogger(__name__)
+
 
 def create_graph_from_gpkg(hydrofabric: Path) -> ig.Graph:
     """
@@ -87,9 +89,10 @@ def get_upstream_ids(names: Union[str, List[str]]) -> List[str]:
             continue
         node_index = graph.vs.find(name=name).index
         upstream_nodes = graph.subcomponent(node_index, mode="IN")
-        parent_ids.add([graph.vs[node_id]["name"] for node_id in upstream_nodes])
+        for node in upstream_nodes:
+            parent_ids.add(graph.vs[node]["name"])
 
-    return parent_ids
+    return list(parent_ids)
 
 
 def get_flow_lines_in_set(upstream_ids: Union[str, List[str]]) -> dict:

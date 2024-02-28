@@ -114,3 +114,17 @@ bold {
     border-radius: 8px;
     font-family: 'Courier New', monospace;
 }
+
+.loading {
+    visibility: hidden;
+    vertical-align: middle;
+    justify-content: center;
+    align-items: center;
+    width: 35px;
+    height: 35px;
+
+}
+
+#control_panel_container {
+    visibility: hidden;
+}

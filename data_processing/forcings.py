@@ -12,6 +12,8 @@ from exactextract import exact_extract
 
 from data_processing.file_paths import file_paths
 
+logger = logging.getLogger(__name__)
+
 
 def load_zarr_datasets(start_time: str, end_time: str) -> xr.Dataset:
     """Load zarr datasets from S3 within the specified time range."""

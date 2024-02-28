@@ -140,7 +140,7 @@ def get_geodf_from_wb_ids(upstream_ids):
     sql_query = f"SELECT id, geom FROM divides WHERE id IN {tuple(upstream_ids)}"
     # remove the trailing comma from single element tuples
     sql_query = sql_query.replace(",)", ")")
-    #get nexus locations
+    # get nexus locations
     nexi_keys = list(line_dict["to_wbs"].keys())
     sql_query2 = f"SELECT id, geom FROM nexus WHERE id IN {tuple(nexi_keys)}"
     sql_query2 = sql_query2.replace(",)", ")")
@@ -169,7 +169,7 @@ def get_geodf_from_wb_ids(upstream_ids):
         if wb not in geoms or nex not in nexs:
             continue
         to_lines.append(LineString([geoms[wb], nexs[nex]]))
-    lngth = sum(x.length for x in to_lines)/max(len(to_lines),1)
+    lngth = sum(x.length for x in to_lines) / max(len(to_lines), 1)
     nexs_dir = []
     nex_pts = []
     for nex, targets in line_dict["to_wbs"].items():
@@ -179,41 +179,26 @@ def get_geodf_from_wb_ids(upstream_ids):
             if not target in geoms:
                 continue
             nexs_dir.append(LineString([nexs[nex], geoms[target]]))
-        nex_pts.append(nexs[nex].buffer(lngth/4, 8))
+        nex_pts.append(nexs[nex].buffer(lngth / 4, 8))
     merged_tolines = unary_union(to_lines)
     merged_nexs = unary_union(nexs_dir)
-    
 
     # split geometries into chunks and run unary_union in parallel
     merged_geometry = unary_union(geometry_list)
     # create a geodataframe from the geometry
-    d1 = {"col1": [
-            upstream_ids[0]+"_merged_geometry"
-        ], "geometry": [
-            merged_geometry
-        ]}
-    d2 = {"col1": [
-            upstream_ids[0]+"_to_lines"
-        ], "geometry": [
-            merged_tolines
-        ]}
-    d3 = {"col1": [
-            upstream_ids[0]+"_from_nexus"
-        ], "geometry": [
-            merged_nexs
-        ]}
-    d4 = {"col1": [
-        ], "geometry": [
-        ]}
+    d1 = {"col1": [upstream_ids[0] + "_merged_geometry"], "geometry": [merged_geometry]}
+    d2 = {"col1": [upstream_ids[0] + "_to_lines"], "geometry": [merged_tolines]}
+    d3 = {"col1": [upstream_ids[0] + "_from_nexus"], "geometry": [merged_nexs]}
+    d4 = {"col1": [], "geometry": []}
     for i, pt in enumerate(nex_pts):
-        d4["col1"].append(upstream_ids[0]+"_nex_circles"+str(i))
+        d4["col1"].append(upstream_ids[0] + "_nex_circles" + str(i))
         d4["geometry"].append(pt)
     ds = {
-        "merged_geometry": d1, 
-        "merged_tolines": d2, 
-        "merged_from_nexus": d3, 
-        "nexus_circles":d4
-        }
+        "merged_geometry": d1,
+        "merged_tolines": d2,
+        "merged_from_nexus": d3,
+        "nexus_circles": d4,
+    }
     gs = {}
     for k, d in ds.items():
         gs[k] = gpd.GeoDataFrame(d, crs="EPSG:5070")
@@ -232,13 +217,14 @@ def get_upstream_geojson_from_wbids():
     for k in gdfs:
         gdfs[k] = gdfs[k].to_crs(epsg=4326)
     print(f"converted crs at {datetime.now()}")
+
     def serialize_geodf(obj):
         if isinstance(obj, gpd.GeoDataFrame):
             return obj.to_json()
         else:
             raise TypeError()
 
-    return json.dumps(gdfs,default=serialize_geodf), 200
+    return json.dumps(gdfs, default=serialize_geodf), 200
 
 
 @main.route("/subset", methods=["POST"])
@@ -247,6 +233,7 @@ def subset_selection():
     print(wb_ids)
     subset_geopackage = subset(wb_ids)
     return subset_geopackage, 200
+
 
 @main.route("/subset_to_file", methods=["POST"])
 def subset_to_file():
@@ -288,6 +275,7 @@ def get_forcings():
         print(f"get_forcings() re-enabled debug mode at {datetime.now()}")
     return "success", 200
 
+
 @main.route("/realization", methods=["POST"])
 def get_realization():
     # body: JSON.stringify({'forcing_dir': forcing_dir, 'start_time': start_time, 'end_time': end_time}),
@@ -301,20 +289,40 @@ def get_realization():
     create_cfe_wrapper(wb_id, start_time, end_time)
     return "success", 200
 
+
 @main.route("/get_vpu", methods=["POST"])
 def get_vpu():
     vpu_boundaries = gpkg_u.get_vpu_gdf()
     return vpu_boundaries.to_json(), 200
 
+
 @main.route("/get_wbids_from_vpu", methods=["POST"])
 def get_wbids_from_vpu():
     vpu = json.loads(request.data.decode("utf-8"))
     vpu = sh.geometry.shape(vpu)
-    #convert to crs 5070
+    # convert to crs 5070
     vpu = gpd.GeoDataFrame({"geometry": [vpu]}, crs="EPSG:4326")
     vpu = vpu.to_crs(epsg=5070)
-    wbs = gpd.read_file(file_paths.data_sources()/"conus.gpkg", layer="divides", mask=vpu)
+    wbs = gpd.read_file(file_paths.data_sources() / "conus.gpkg", layer="divides", mask=vpu)
     wbs = wbs.to_crs(epsg=4326)
     wbs = wbs[wbs["id"].notna()]
-    #return dict[id: [lat, lon]]
-    return json.dumps(dict(zip(wbs["id"], zip(wbs["geometry"].centroid.x, wbs["geometry"].centroid.y)))), 200
+    # return dict[id: [lat, lon]]
+    return (
+        json.dumps(
+            dict(zip(wbs["id"], zip(wbs["geometry"].centroid.x, wbs["geometry"].centroid.y)))
+        ),
+        200,
+    )
+
+
+@main.route("/logs", methods=["GET"])
+def get_logs():
+    log_file_path = "app.log"
+    try:
+        with open(log_file_path, "r") as file:
+            # Read the last 100 lines
+            lines = file.readlines()[-100:]
+            lines = [line.strip() for line in lines]
+            return jsonify({"logs": lines}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)})
