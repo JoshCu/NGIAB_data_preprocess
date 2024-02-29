@@ -1,0 +1,8 @@
+div.leaflet-layer:nth-child(1) {
+    filter: saturate(150%);
+}
+
+div.leaflet-layer:nth-child(n+2) {
+    filter: contrast(2345);
+    mix-blend-mode: multiply;
+}

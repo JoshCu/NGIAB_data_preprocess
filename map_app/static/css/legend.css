@@ -1,0 +1,38 @@
+#legend {
+    background-color: white;
+    opacity: 0.8;
+    overflow: hidden;
+    border-radius: 13px;
+
+}
+
+.legend_header {
+
+    padding-top: "5px";
+    padding-bottom: "4px";
+    padding-left: 10px;
+    font-size: large;
+}
+
+.legend_entry {
+    display: flex;
+    flex-direction: row;
+    align-items: left;
+    justify-content: left;
+    background-color: lightgray;
+    fill-opacity: 0.5;
+    font-size: medium;
+}
+
+.legend_icon {
+    width: 20px;
+    height: 20px;
+    border: 1px solid black;
+    margin: 5px;
+    border-radius: 50%;
+    background-color: white;
+}
+
+.legend_name {
+    margin: 5px;
+}

@@ -90,17 +90,10 @@ function updateLegend() {
     var div = document.getElementById('legend');
     if (!div) {
         //Create the legend if it doesn't exist
-        div = L.DomUtil.create('div', 'info legend');
+        div = L.DomUtil.create('div');
         div.id = 'legend';
-        div.style.backgroundColor = "white";
-        div.style.opacity = "0.8";
-        div.style.overflow = "hidden";
-        div.style.borderRadius = "5px";
-        var label_div = L.DomUtil.create('div', 'legend_label');
-        label_div.innerHTML = '<strong>Legend</strong>';
-        label_div.style.textAlign = "center";
-        label_div.style.paddingTop = "5px";
-        label_div.style.paddingBottom = "5px";
+        label_div = L.DomUtil.create('div', 'legend_header');
+        label_div.textContent = 'Legend';
         div.appendChild(label_div);
         legend.onAdd = function (map) {
             this._div = div;
@@ -135,24 +128,11 @@ function updateLegend() {
         if (!div_l) {
             div_l = L.DomUtil.create('div', 'legend_entry');
             div_l.id = "legend_" + layer_name + "_div";
-            div_l.style.backgroundColor = "lightgray";
-            div_l.style.fillOpacity = "0.5";
-            div_l.style.flexDirection = "row";
-            div_l.style.display = "flex";
-            div_l.style.alignItems = "left";
-            div_l.style.justifyContent = "left";
             layer_icon = L.DomUtil.create('div', 'legend_icon');
             layer_icon.id = "legend_" + layer_name + "_icon";
-            layer_icon.style.backgroundColor = "white";
-            layer_icon.style.width = "20px";
-            layer_icon.style.height = "20px";
-            layer_icon.style.border = "1px solid black";
-            layer_icon.style.margin = "5px";
-            layer_icon.style.borderRadius = "50%";
             div_l.appendChild(layer_icon);
             layer_name_div = L.DomUtil.create('div', 'legend_name');
             layer_name_div.id = "legend_" + layer_name + "_name";
-            layer_name_div.style.margin = "5px";
             layer_name_div.textContent = layer_name;
             div_l.appendChild(layer_name_div);
             layer_icon.onclick = function () {

@@ -8,17 +8,9 @@
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <style>
-        div.leaflet-layer:nth-child(1) {
-            filter: saturate(150%);
-        }
-
-        div.leaflet-layer:nth-child(n+2) {
-            filter: contrast(2345);
-            mix-blend-mode: multiply;
-        }
-    </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/legend.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/map.css') }}">
 </head>
 
 <body>
@@ -41,9 +33,9 @@
             <button id="subset-button">Subset</button>
             <img class="loading" src="{{ url_for('static', filename='resources/loading.gif') }}" alt="Loading"
                 id="subset-loading">
-            <button id="subset2-button">Output list to file</button>
+            <button id="subset-to-file-button">Output list to file</button>
             <img class="loading" src="{{ url_for('static', filename='resources/loading.gif') }}" alt="Loading"
-                id="subset2-loading">
+                id="subset-to-file-loading">
             <div id="output-path"></div>
         </section>
 
