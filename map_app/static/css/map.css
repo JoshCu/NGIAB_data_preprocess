@@ -19,5 +19,5 @@ div.leaflet-layer:nth-child(n+2) {
 
 .leaflet-interactive:hover {
     filter: saturate(150%);
-    fill-opacity: 0.55;
+    fill-opacity: 0.3;
 }
