@@ -1,14 +1,35 @@
 import logging
 import sqlite3
-from functools import cache
-from pathlib import Path
 from typing import List, Tuple
-
-import geopandas as gpd
-
 from data_processing.file_paths import file_paths
 
 logger = logging.getLogger(__name__)
+
+
+def verify_indices(gpkg: str = file_paths.conus_hydrofabric()) -> None:
+    new_indicies = [
+        'CREATE INDEX "diid" ON "divides" ( "id" ASC );',
+        'CREATE INDEX "flaid" ON "flowpath_attributes" ( "id" ASC );',
+        'CREATE INDEX "flid" ON "flowpaths" ( "id" ASC );',
+        'CREATE INDEX "hyid" ON "hydrolocations" ( "id" ASC );',
+        #'CREATE INDEX "laid" ON "lakes" ( "id" ASC );',
+        'CREATE INDEX "neid" ON "nexus" ( "id" ASC );',
+        'CREATE INDEX "nid" ON "network" ( "id" ASC );',
+    ]
+    # check if the gpkg has the correct indices
+    con = sqlite3.connect(gpkg)
+    indices = con.execute("SELECT name FROM sqlite_master WHERE type = 'index'").fetchall()
+    indices = [x[0] for x in indices]
+    for index in new_indicies:
+        if index.split('"')[1] not in indices:
+            logger.info(f"Creating index {index}")
+            con.execute(index)
+            con.commit()
+    con.close()
+
+
+# whenever this is imported, check if the indices are correct
+verify_indices()
 
 
 def copy_rTree_tables(
@@ -56,7 +77,7 @@ def insert_data(con: sqlite3.Connection, table: str, contents: List[Tuple]) -> N
     if len(contents) == 0:
         return
 
-    logger.info(f"Inserting {table}")
+    logger.debug(f"Inserting {table}")
     placeholders = ",".join("?" * len(contents[0]))
     con.executemany(f"INSERT INTO {table} VALUES ({placeholders})", contents)
     con.commit()
@@ -142,10 +163,19 @@ def add_triggers(triggers: List[Tuple], dest_db: str) -> None:
     con.close()
 
 
-@cache
-def get_vpu_gdf():
-    vpu_boundaries = gpd.read_file(
-        file_paths.data_sources() / "vpu_boundaries.shp", engine="pyogrio"
-    )
-    vpu_boundaries = vpu_boundaries.to_crs(epsg=4326)
-    return vpu_boundaries
+def get_table_crs(gpkg: str, table: str) -> str:
+    """
+    Get the CRS of the specified table in the specified geopackage.
+
+    Args:
+        gpkg (str): The path to the geopackage.
+        table (str): The table name.
+
+    Returns:
+        str: The CRS of the table.
+    """
+    con = sqlite3.connect(gpkg)
+    sql_query = f"SELECT g.definition FROM gpkg_geometry_columns AS c JOIN gpkg_spatial_ref_sys AS g ON c.srs_id = g.srs_id WHERE c.table_name = '{table}'"
+    crs = con.execute(sql_query).fetchone()[0]
+    con.close()
+    return crs
