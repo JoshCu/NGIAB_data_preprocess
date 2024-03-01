@@ -1,0 +1,9 @@
+:root {
+
+    --selected-wb-outline: rgba(255, 21, 189, 0.711);
+    --selected-wb-fill: rgba(252, 83, 221, 0.316);
+
+    --upstream-wb-outline: rgba(33, 139, 205, 0.736);
+    --upstream-wb-fill: rgba(46, 116, 255, 0.278);
+
+}

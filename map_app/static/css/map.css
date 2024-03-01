@@ -1,3 +1,5 @@
+@import "colors.css";
+
 div.leaflet-layer:nth-child(1) {
     filter: saturate(150%);
 }
@@ -17,7 +19,22 @@ div.leaflet-layer:nth-child(n+2) {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
+.leaflet-interactive {
+    /* using rgba for fill so set opacity to 1 */
+    fill-opacity: 1;
+}
+
 .leaflet-interactive:hover {
     filter: saturate(150%);
-    fill-opacity: 0.3;
+    filter: brightness(150%);
+}
+
+.selected-wb-layer {
+    stroke: var(--selected-wb-outline);
+    fill: var(--selected-wb-fill);
+}
+
+.upstream-wb-layer {
+    stroke: var(--upstream-wb-outline);
+    fill: var(--upstream-wb-fill);
 }

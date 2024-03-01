@@ -1,3 +1,5 @@
+@import "colors.css";
+
 .custom_legend {
     background-color: rgba(255, 255, 255, 0.4);
     overflow: hidden;
@@ -7,7 +9,6 @@
 }
 
 .legend_header {
-
     padding-top: "5px";
     padding-bottom: "4px";
     padding-left: 10px;
@@ -48,11 +49,11 @@
 }
 
 #legend_selected_wb_layer_icon {
-    background-color: rgb(255, 47, 151);
+    background-color: var(--selected-wb-outline);
 }
 
-#legend_merged_geometry_icon {
-    background-color: rgb(51, 136, 255);
+#legend_upstream_layer_icon {
+    background-color: var(--upstream-wb-outline);
 }
 
 #legend_merged_tolines_icon {

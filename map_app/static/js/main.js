@@ -1,10 +1,7 @@
 var wb_id_dict = {};
 var selected_wb_layer = null;
 var upstream_maps = {};
-var arrive_lines = null;
-var leave_lines = null;
-
-var mouse_on_legend = false;
+var flowline_layers = {};
 
 var registered_layers = {}
 
@@ -25,12 +22,10 @@ async function update_selected() {
                 }
                 console.log(data);
                 // add the new layer
-                selected_wb_layer = L.geoJSON(data, {
-                    style: {
-                        color: "#eb34d8",
-                        fillColor: '#e0abff',
-                    }
-                }).addTo(map);
+                selected_wb_layer = L.geoJSON(data).addTo(map);
+                selected_wb_layer.eachLayer(function (layer) {
+                    layer._path.classList.add('selected-wb-layer');
+                });
             })
             .catch(error => {
                 console.error('Error:', error);
@@ -42,6 +37,8 @@ async function update_selected() {
     }
     document.getElementById('selected-basins').textContent = Object.keys(wb_id_dict).join(', ');
 }
+
+
 
 
 async function populate_upstream() {
@@ -80,7 +77,62 @@ async function populate_upstream() {
                     console.log(data);
                     // add the new layer if the downstream wb's still selected
                     if (key in wb_id_dict) {
-                        upstream_maps[key] = L.geoJSON(data).addTo(map);
+                        layer_group = L.geoJSON(data).addTo(map);
+                        upstream_maps[key] = layer_group;
+                        layer_group.eachLayer(function (layer) {
+                            layer._path.classList.add('upstream-wb-layer');
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+    });
+
+    await Promise.all(fetchPromises);
+    if (selected_wb_layer) {
+        selected_wb_layer.bringToFront();
+    }
+}
+
+async function populate_flowlines() {
+    console.log('populating flowlines');
+    // drop any key that is not in the wb_id_dict
+    for (const [key, value] of Object.entries(flowline_layers)) {
+        if (!(key in wb_id_dict)) {
+            map.removeLayer(value);
+            delete flowline_layers[key];
+        }
+    }
+    // add any key that is in the wb_id_dict but not in the flowline_layers
+    for (const [key, value] of Object.entries(wb_id_dict)) {
+        if (!(key in flowline_layers)) {
+            flowline_layers[key] = null;
+        }
+    }
+    if (Object.keys(flowline_layers).length === 0) {
+        return;
+    }
+
+    const fetchPromises = Object.entries(flowline_layers).map(([key, value]) => {
+        if (value === null) {
+            return fetch('/get_upstream_geojson_from_wbids', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(key),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    // if the wb_id is already in the dict, remove the key
+                    // remove the old layer
+                    if (flowline_layers[key]) {
+                        map.removeLayer(flowline_layers[key]);
+                    }
+                    console.log(data);
+                    // add the new layer if the downstream wb's still selected
+                    if (key in wb_id_dict) {
+                        flowline_layers[key] = L.geoJSON(data).addTo(map);
                     }
                 })
                 .catch(error => {
@@ -122,6 +174,7 @@ function onMapClick(event) {
             console.log('clicked on wb_id: ' + data['wb_id'] + ' coords :' + lat + ', ' + lng);
             update_selected();
             populate_upstream();
+            get_flowlines();
         })
         .catch(error => {
             console.error('Error:', error);
@@ -200,11 +253,12 @@ var map = L.map('map').setView([40, -96], 5);
 var legend = L.control({ position: 'bottomright' });
 // load in html template for the legend
 legend.onAdd = function (map) {
-    return L.DomUtil.create('div', 'custom_legend');
+    legend_div = L.DomUtil.create('div', 'custom_legend');
+    return legend_div
 };
 legend.addTo(map);
-// load in html template for the control panel
-$(".custom_legend").load("static/html/legend.html");
+
+
 // Add OpenStreetMap tiles to the map
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
