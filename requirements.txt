@@ -1,6 +1,7 @@
 pyarrow
 pyyaml
 pyogrio
+pyproj
 flask
 flask-cors
 gdal==3.2.2.1

@@ -29,15 +29,6 @@ h1 {
     margin: 20px;
 }
 
-/* Map container styling */
-#map {
-    height: 60vh;
-    min-height: 400px;
-    width: 100%;
-    margin-right: 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
 
 /* Settings container styling */
 #settings {
