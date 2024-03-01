@@ -2,7 +2,7 @@ import logging
 import sqlite3
 from functools import cache
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Set
 
 import igraph as ig
 
@@ -67,7 +67,7 @@ def get_graph() -> ig.Graph:
     return network_graph
 
 
-def get_upstream_ids(names: Union[str, List[str]]) -> List[str]:
+def get_upstream_ids(names: Union[str, List[str]]) -> Set[str]:
     """
     Retrieves IDs of all nodes upstream of the given nodes in the hydrological network.
 
@@ -78,7 +78,7 @@ def get_upstream_ids(names: Union[str, List[str]]) -> List[str]:
         names (Union[str, List[str]]): A single node name or a list of node names.
 
     Returns:
-        List[str]: A list of IDs for all nodes upstream of the specified node(s).
+        Set[str]: A list of IDs for all nodes upstream of the specified node(s).
     """
     graph = get_graph()
     if isinstance(names, str):
@@ -92,7 +92,7 @@ def get_upstream_ids(names: Union[str, List[str]]) -> List[str]:
         for node in upstream_nodes:
             parent_ids.add(graph.vs[node]["name"])
 
-    return list(parent_ids)
+    return parent_ids
 
 
 def get_flow_lines_in_set(upstream_ids: Union[str, List[str]]) -> dict:

@@ -104,6 +104,7 @@ def subset(wb_ids: List[str], hydrofabric: str = file_paths.conus_hydrofabric())
         wb_ids = [wb_ids]
 
     upstream_ids = get_upstream_ids(wb_ids)
+    upstream_ids = sorted(list(upstream_ids))
     subset_output_dir = file_paths.root_output_dir() / upstream_ids[0]
     remove_existing_output_dir(subset_output_dir)
 

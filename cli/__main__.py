@@ -13,7 +13,7 @@ import cli.cli_handle as cli_handle
 
 # Interface file
 
-arg_options = { # name, description
+arg_options = {  # name, description
     "-h": "Prints the help message",
     "[0]": "The first positional argument, the file path for the given waterbodies",
     "-s": "Creates a subset of the hydrofabric for the given waterbodies",
@@ -24,7 +24,7 @@ arg_options = { # name, description
 supported_filetypes = {
     ".csv": "comma separated values",
     ".txt": "plaintext, newline separated values",
-    "" : "plaintext, newline separated values",
+    "": "plaintext, newline separated values",
 }
 
 default_forcing_config = {
@@ -34,17 +34,20 @@ default_forcing_config = {
 
 for time in ["start_time", "end_time"]:
     print(f"Converting {default_forcing_config[time]} to datetime")
-    default_forcing_config[time] = datetime.strptime(default_forcing_config[time], "%Y-%m-%d, %I:%M %p")
-    default_forcing_config[time] = datetime.strftime(default_forcing_config[time], "%Y-%m-%dT%H:%M")
+    default_forcing_config[time] = datetime.strptime(
+        default_forcing_config[time], "%Y-%m-%d, %I:%M %p"
+    )
+    default_forcing_config[time] = datetime.strftime(
+        default_forcing_config[time], "%Y-%m-%dT%H:%M"
+    )
     print(f"Converted {default_forcing_config[time]} to datetime")
-
-
 
 
 def print_help():
     print("This is the help message for the command line interface")
     for key in arg_options:
         print(f"{key}: {arg_options[key]}")
+
 
 def get_input_wbs():
     if len(sys.argv) < 2:
@@ -65,6 +68,7 @@ def get_input_wbs():
         raise Exception(f"Filetype {filetype} not supported")
     return path, filetype
 
+
 def read_input_wbs(path, filetype):
     if filetype == ".csv":
         with open(path, "r") as f:
@@ -74,11 +78,14 @@ def read_input_wbs(path, filetype):
             return f.read().split("\n")
     else:
         raise Exception(f"Filetype {filetype} not supported")
-    
+
+
 def get_output_foldername(ids):
     upstream_ids = graph_utils.get_upstream_ids(ids)
+    upstream_ids = list(upstream_ids)
     return sorted(upstream_ids)[0]
-    
+
+
 def main():
     if "-h" in sys.argv or len(sys.argv) < 2:
         print_help()
@@ -91,7 +98,7 @@ def main():
         cli_handle.subset_interface(ids)
     elif not target_dir.exists() and ("-f" in sys.argv or "-r" in sys.argv):
         raise Exception(f"No subset directory found at {target_dir}")
-    
+
     if "-f" in sys.argv:
         f_ind = sys.argv.index("-f")
         config = None
@@ -101,7 +108,7 @@ def main():
             config = default_forcing_config
         config["forcing_dir"] = target_dir.name
         cli_handle.forcings_interface(ids, config)
-    
+
     if "-r" in sys.argv:
         r_ind = sys.argv.index("-r")
         config = None
@@ -112,9 +119,6 @@ def main():
         config["forcing_dir"] = target_dir.name
         cli_handle.realization_interface(ids, config)
 
+
 if __name__ == "__main__":
     main()
-
-
-    
-
