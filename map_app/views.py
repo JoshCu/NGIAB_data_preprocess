@@ -89,13 +89,26 @@ def get_map_data():
 
 
 def wbids_to_geojson(wb_dict):
-    for k, v in wb_dict.items():
-        wb_dict[k] = Point(v[1], v[0])
+    # if None in wb_dict.values():
+    
+    # for k, v in wb_dict.items():
+        # wb_dict[k] = Point(v[1], v[0])
+        # wb_dict[k] = Point(v.get("lng"), v.get("lat"))
     d = {"col1": wb_dict.keys(), "geometry": wb_dict.values()}
-    points = gpd.GeoDataFrame(d, crs="EPSG:4326")
-    print(points)
+    points = gpd.GeoDataFrame(d, crs="EPSG:5070")
+    with open(file_paths.root_output_dir() / "full_gdf.json", "w") as f:
+        f.write(points.to_json())
+    # points = points.to_crs(crs="EPSG:5070")
+    # print(points)
     q = Path(__file__).parent.parent / "data_sources" / "conus.gpkg"
-    df = gpd.read_file(q, format="GPKG", layer="divides", mask=points)
+    try:
+        print("reading file")
+        df = gpd.read_file(q, format="GPKG", layer="divides", mask=points)
+        print("read file")
+    except Exception as e:
+        print("error reading file")
+        print(e)
+        raise Exception(e.args).with_traceback(e.__traceback__)
     # convert crs to 4326
     df = df.to_crs(epsg=4326)
     return df.to_json()
@@ -104,7 +117,9 @@ def wbids_to_geojson(wb_dict):
 @main.route("/get_geojson_from_wbids", methods=["POST"])
 def get_geojson_from_wbids():
     wb_dict = json.loads(request.data.decode("utf-8"))
-    print(wb_dict)
+    print(len(wb_dict), "wbids")
+    wb_dict = gpkg_u.get_points_from_wbids(wb_dict)
+    print(len(wb_dict), "points")
     if len(wb_dict) == 0:
         return [], 204
     try:

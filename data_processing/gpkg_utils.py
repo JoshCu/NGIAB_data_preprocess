@@ -7,6 +7,7 @@ from typing import List, Tuple
 import geopandas as gpd
 
 from data_processing.file_paths import file_paths
+from shapely.wkb import loads
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,58 @@ def subset_table(table: str, ids: List[str], hydrofabric: str, subset_gpkg_name:
     dest_db.commit()
     source_db.close()
     dest_db.close()
+
+def blob_to_geometry(blob):
+    # from http://www.geopackage.org/spec/#gpb_format
+    # byte 0-2 don't need
+    # byte 3 bit 0 (bit 24)= 0 for little endian, 1 for big endian (used for srs id and envelope type)
+    # byte 3 bit 1-3 (bit 25-27)= envelope type (needed to calculate envelope size)
+    # byte 3 bit 4 (bit 28)= empty geometry flag
+    envelope_type = (blob[3] & 14) >> 1
+    empty = (blob[3] & 16) >> 4
+    if empty:
+        return None
+    envelope_sizes = [0, 32, 48, 48, 64]
+    envelope_size = envelope_sizes[envelope_type]
+    header_byte_length = 8 + envelope_size
+    # everything after the header is the geometry
+    geom = blob[header_byte_length:]
+    # convert to hex
+    geometry = loads(geom)
+    return geometry
+
+def get_points_from_wbids(wbids: List[str]) -> dict:
+    """
+    Get the points from the specified wbids.
+
+    Args:
+        wbids (List[str]): The list of wbids.
+
+    Returns:
+        gpd.GeoDataFrame: The points from the specified wbids.
+    """
+    db = sqlite3.connect(file_paths.conus_hydrofabric())
+    wbids_list = [f"'{x}'" for x in wbids]
+    query = f"SELECT id, geom FROM divides WHERE id IN ({','.join(wbids_list)})"
+    query = query.replace(",)", ")")
+    # print(f"Executing query: {query}")
+    data = db.execute(query).fetchall()
+    print(f"Got data: {len(data)}")
+    db.close()
+    wb_centroids = {}
+    for i, d in enumerate(data):
+        try:
+            wb_centroids[d[0]] = blob_to_geometry(d[1]).centroid
+            # print(f"Got geometry: {wb_centroids[d[0]]}",end="\r")
+        except Exception as e:
+            print(f"Error getting geometry for {d[0]}: {e}",end="\r")
+            logger.error(f"Error getting geometry for {d[0]}: {e}")
+            raise e
+    # raise Exception(wb_centroids)
+    return wb_centroids
+
+
+
 
 
 def remove_triggers(dest_db: str) -> List[Tuple]:

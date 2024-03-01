@@ -40,7 +40,7 @@ h1 {
 
 /* Settings container styling */
 #settings {
-    display: none;
+    display: block;
     width: 25%;
     background: white;
     padding: 20px;
@@ -132,5 +132,6 @@ bold {
 }
 
 #control_panel_container {
-    visibility: hidden;
+    /* start shown */
+    visibility: visible;
 }

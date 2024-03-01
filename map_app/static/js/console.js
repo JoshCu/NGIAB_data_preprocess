@@ -21,4 +21,4 @@ function fetchLogs() {
 
 }
 
-setInterval(fetchLogs, 1000); // Fetch logs every second
+// setInterval(fetchLogs, 1000); // Fetch logs every second

@@ -211,7 +211,7 @@ async function update_selected() {
                 if (selected_wb_layer) {
                     map.removeLayer(selected_wb_layer);
                 }
-                console.log(data);
+                // console.log(data.length);
                 // add the new layer
                 var selected_style = control_panel.utility.get_setting_value("geometries.selected_wb_layer.style");
 
@@ -561,6 +561,29 @@ async function select_wbids_in_vpu(e) {
         });
 }
 
+async function select_wbids_from_file() {
+    console.log('selecting wbids from file');
+    var file = document.getElementById('file-input').files[0];
+    if (!file) {
+        alert('Please select a file');
+        return;
+    }
+    var reader = new FileReader();
+    reader.onload = function (e) {
+        var contents = e.target.result;
+        var wbids = contents.split('\n');
+        wbids.forEach(wbid => {
+            wbid = wbid.trim();
+            if (wbid === '') {
+                return;
+            }
+            wb_id_dict[wbid] = null;
+        });
+        update_selected();
+    };
+    reader.readAsText(file);
+}
+
 
 geometry_urls = {
     '16': 'e8ddee6a8a90484fa7a976458e79c0c3',
@@ -684,6 +707,7 @@ get_vpus();
 // add listener for the #subset-button
 document.getElementById('subset-button').addEventListener('click', subset);
 document.getElementById('subset2-button').addEventListener('click', subset_to_file);
+document.getElementById('file-input').addEventListener('change', select_wbids_from_file);
 // add listener for the #forcings-button
 document.getElementById('forcings-button').addEventListener('click', forcings);
 // add listener for the #realization-button
