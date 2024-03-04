@@ -154,16 +154,6 @@ async function populate_flowlines() {
                                 layer._path.classList.add('flowline-to-nexus-layer');
                             }
                         });
-                        // currently using leaflet-marker-pane and leaflet-shadow-pane
-                        // if we wanted to use markers for something other than nexus
-                        // we would need to add a class to the nexus marker
-                        nexus_layer.eachLayer(function (layer) {
-                            layer.eachLayer(function (point) {
-                                console.log(point);
-                                point._icon.classList.add('nexus-layer');
-                                point._shadow.classList.add('nexus-layer');
-                            });
-                        });
                     }
                     flowline_layers[key] = [to_wb_layer, to_nexus_layer, nexus_layer];
                 })
@@ -228,6 +218,8 @@ function onMapClick(event) {
             }
             console.log('clicked on wb_id: ' + data['wb_id'] + ' coords :' + lat + ', ' + lng);
             synchronizeUpdates();
+            $('#selected-basins').text(Object.keys(wb_id_dict).join(', '));
+
         })
         .catch(error => {
             console.error('Error:', error);
