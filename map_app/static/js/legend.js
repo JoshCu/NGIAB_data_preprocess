@@ -22,6 +22,18 @@ document.addEventListener('DOMContentLoaded', function () {
         if (f.target.id === "legend_upstream_layer_icon") {
             $(".upstream-wb-layer").toggle(200);
         }
+        if (f.target.id === "legend_to_wb_icon") {
+            $(".flowline-to-wb-layer").toggle(200);
+        }
+        if (f.target.id === "legend_to_nexus_icon") {
+            $(".flowline-to-nexus-layer").toggle(200);
+        }
+        if (f.target.id === "legend_nexus_circles_icon") {
+            //$(".nexus-layer").toggle(200);
+            // using the full pane is way faster
+            $(".leaflet-marker-pane").toggle(200);
+            $(".leaflet-shadow-pane").toggle(200);
+        }
 
         // disable propagation to prevent map click event from firing
         f.stopPropagation();

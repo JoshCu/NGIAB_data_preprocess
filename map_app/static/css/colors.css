@@ -6,4 +6,10 @@
     --upstream-wb-outline: rgba(33, 139, 205, 0.736);
     --upstream-wb-fill: rgba(46, 116, 255, 0.278);
 
+    --flowline-to-wb-outline: rgba(34, 238, 44, 1);
+    --flowline-to-nexus-outline: rgba(202, 26, 26, 1);
+
+    --nexus-outline: rgba(1, 1, 1, 0.5);
+    --nexus-fill: rgba(255, 255, 255, 0.5);
+
 }

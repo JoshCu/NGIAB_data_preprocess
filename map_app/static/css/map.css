@@ -38,3 +38,16 @@ div.leaflet-layer:nth-child(n+2) {
     stroke: var(--upstream-wb-outline);
     fill: var(--upstream-wb-fill);
 }
+
+.flowline-to-wb-layer {
+    stroke: var(--flowline-to-wb-outline);
+}
+
+.flowline-to-nexus-layer {
+    stroke: var(--flowline-to-nexus-outline);
+}
+
+.nexus-layer {
+    stroke: var(--nexus-outline);
+    fill: var(--nexus-fill);
+}

@@ -8,7 +8,7 @@ var registered_layers = {}
 async function update_selected() {
     console.log('updating selected');
     if (!(Object.keys(wb_id_dict).length === 0)) {
-        fetch('/get_geojson_from_wbids', {
+        return fetch('/get_geojson_from_wbids', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(wb_id_dict),
@@ -34,8 +34,8 @@ async function update_selected() {
         if (selected_wb_layer) {
             map.removeLayer(selected_wb_layer);
         }
+        return Promise.resolve();
     }
-    document.getElementById('selected-basins').textContent = Object.keys(wb_id_dict).join(', ');
 }
 
 
@@ -57,7 +57,7 @@ async function populate_upstream() {
         }
     }
     if (Object.keys(upstream_maps).length === 0) {
-        return;
+        return Promise.resolve();
     }
 
     const fetchPromises = Object.entries(upstream_maps).map(([key, value]) => {
@@ -80,7 +80,9 @@ async function populate_upstream() {
                         layer_group = L.geoJSON(data).addTo(map);
                         upstream_maps[key] = layer_group;
                         layer_group.eachLayer(function (layer) {
-                            layer._path.classList.add('upstream-wb-layer');
+                            if (layer._path) {
+                                layer._path.classList.add('upstream-wb-layer');
+                            }
                         });
                     }
                 })
@@ -89,11 +91,8 @@ async function populate_upstream() {
                 });
         }
     });
+    return fetchPromises;
 
-    await Promise.all(fetchPromises);
-    if (selected_wb_layer) {
-        selected_wb_layer.bringToFront();
-    }
 }
 
 async function populate_flowlines() {
@@ -101,8 +100,10 @@ async function populate_flowlines() {
     // drop any key that is not in the wb_id_dict
     for (const [key, value] of Object.entries(flowline_layers)) {
         if (!(key in wb_id_dict)) {
-            map.removeLayer(value);
-            delete flowline_layers[key];
+            for (i of flowline_layers[key]) {
+                map.removeLayer(i);
+                delete flowline_layers[key];
+            }
         }
     }
     // add any key that is in the wb_id_dict but not in the flowline_layers
@@ -112,12 +113,12 @@ async function populate_flowlines() {
         }
     }
     if (Object.keys(flowline_layers).length === 0) {
-        return;
+        return Promise.resolve();
     }
 
     const fetchPromises = Object.entries(flowline_layers).map(([key, value]) => {
         if (value === null) {
-            return fetch('/get_upstream_geojson_from_wbids', {
+            return fetch('/get_flowlines_from_wbids', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(key),
@@ -127,24 +128,78 @@ async function populate_flowlines() {
                     // if the wb_id is already in the dict, remove the key
                     // remove the old layer
                     if (flowline_layers[key]) {
-                        map.removeLayer(flowline_layers[key]);
+                        for (i of flowline_layers[key]) {
+                            map.removeLayer(i);
+                        }
                     }
                     console.log(data);
+                    to_wb = JSON.parse(data['to_wb']);
+                    to_nexus = JSON.parse(data['to_nexus']);
+                    nexus = JSON.parse(data['nexus']);
                     // add the new layer if the downstream wb's still selected
                     if (key in wb_id_dict) {
-                        flowline_layers[key] = L.geoJSON(data).addTo(map);
+                        to_wb_layer = L.geoJSON(to_wb).addTo(map);
+                        to_nexus_layer = L.geoJSON(to_nexus).addTo(map);
+                        nexus_layer = L.geoJSON(nexus).addTo(map);
+                        // hack to add css classes to the flowline layers
+                        // using eachLayer as it waits for layer to be done updating
+                        // directly accessing the _layers keys may not always work
+                        to_wb_layer.eachLayer(function (layer) {
+                            if (layer._path) {
+                                layer._path.classList.add('flowline-to-wb-layer');
+                            }
+                        });
+                        to_nexus_layer.eachLayer(function (layer) {
+                            if (layer._path) {
+                                layer._path.classList.add('flowline-to-nexus-layer');
+                            }
+                        });
+                        // currently using leaflet-marker-pane and leaflet-shadow-pane
+                        // if we wanted to use markers for something other than nexus
+                        // we would need to add a class to the nexus marker
+                        nexus_layer.eachLayer(function (layer) {
+                            layer.eachLayer(function (point) {
+                                console.log(point);
+                                point._icon.classList.add('nexus-layer');
+                                point._shadow.classList.add('nexus-layer');
+                            });
+                        });
                     }
+                    flowline_layers[key] = [to_wb_layer, to_nexus_layer, nexus_layer];
                 })
+
                 .catch(error => {
                     console.error('Error:', error);
                 });
         }
     });
+    return fetchPromises;
 
-    await Promise.all(fetchPromises);
-    if (selected_wb_layer) {
-        selected_wb_layer.bringToFront();
-    }
+}
+
+async function synchronizeUpdates() {
+    console.log('Starting updates');
+
+    // wait for all promises
+    const upstreamPromises = await populate_upstream();
+    const flowlinePromises = await populate_flowlines();
+    const selectedPromise = await update_selected();
+    await Promise.all([selectedPromise, ...upstreamPromises, ...flowlinePromises]).then(() => {
+        // This block executes after all promises from populate_upstream and populate_flowlines have resolved
+        console.log('All updates are complete');
+        // BringToFront operations or any other operations to perform after updates
+        if (selected_wb_layer) {
+            selected_wb_layer.bringToFront();
+        }
+        for (const [key, value] of Object.entries(flowline_layers)) {
+            if (key in wb_id_dict) {
+                value[0].bringToFront();
+                value[1].bringToFront();
+            }
+        }
+    }).catch(error => {
+        console.error('An error occurred:', error);
+    });
 }
 
 function onMapClick(event) {
@@ -172,14 +227,11 @@ function onMapClick(event) {
                 wb_id_dict[data['wb_id']] = [lat, lng];
             }
             console.log('clicked on wb_id: ' + data['wb_id'] + ' coords :' + lat + ', ' + lng);
-            update_selected();
-            populate_upstream();
-            get_flowlines();
+            synchronizeUpdates();
         })
         .catch(error => {
             console.error('Error:', error);
         });
-
 
 }
 

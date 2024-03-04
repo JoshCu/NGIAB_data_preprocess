@@ -2,11 +2,19 @@ import logging
 import sqlite3
 from typing import List, Tuple
 from data_processing.file_paths import file_paths
+from shapely.wkb import loads
+from shapely.geometry import Point, Polygon
+from typing import Union
+import struct
 
 logger = logging.getLogger(__name__)
 
 
 def verify_indices(gpkg: str = file_paths.conus_hydrofabric()) -> None:
+    """
+    Verify that the indices in the specified geopackage are correct.
+    If they are not, create the correct indices.
+    """
     new_indicies = [
         'CREATE INDEX "diid" ON "divides" ( "id" ASC );',
         'CREATE INDEX "flaid" ON "flowpath_attributes" ( "id" ASC );',
@@ -30,6 +38,60 @@ def verify_indices(gpkg: str = file_paths.conus_hydrofabric()) -> None:
 
 # whenever this is imported, check if the indices are correct
 verify_indices()
+
+
+def blob_to_geometry(blob: bytes) -> Union[Point, Polygon]:
+    """
+    Convert a blob to a geometry.
+    from http://www.geopackage.org/spec/#gpb_format
+    byte 0-2 don't need
+    byte 3 bit 0 (bit 24)= 0 for little endian, 1 for big endian (used for srs id and envelope type)
+    byte 3 bit 1-3 (bit 25-27)= envelope type (needed to calculate envelope size)
+    byte 3 bit 4 (bit 28)= empty geometry flag
+    """
+    envelope_type = (blob[3] & 14) >> 1
+    empty = (blob[3] & 16) >> 4
+    if empty:
+        return None
+    envelope_sizes = [0, 32, 48, 48, 64]
+    envelope_size = envelope_sizes[envelope_type]
+    header_byte_length = 8 + envelope_size
+    # everything after the header is the geometry
+    geom = blob[header_byte_length:]
+    # convert to hex
+    geometry = loads(geom)
+    return geometry
+
+
+def blob_to_centroid(blob: bytes) -> Point:
+    """
+    Convert a blob to a geometry.
+    from http://www.geopackage.org/spec/#gpb_format
+    byte 0-2 don't need
+    byte 3 bit 0 (bit 24)= 0 for little endian, 1 for big endian (used for srs id and envelope type)
+    byte 3 bit 1-3 (bit 25-27)= envelope type (needed to calculate envelope size)
+    byte 3 bit 4 (bit 28)= empty geometry flag
+    """
+    envelope_type = (blob[3] & 14) >> 1
+    empty = (blob[3] & 16) >> 4
+    if empty:
+        return None
+    envelope_sizes = [0, 32, 48, 48, 64]
+    envelope_size = envelope_sizes[envelope_type]
+    header_byte_length = 8 + envelope_size
+    # everything after the header is the geometry
+    envelope = blob[8:header_byte_length]
+    if envelope_type != 1:
+        logger.error(blob)
+        raise Exception("Envelope type not supported")
+    minx = struct.unpack("d", envelope[0:8])[0]
+    maxx = struct.unpack("d", envelope[8:16])[0]
+    miny = struct.unpack("d", envelope[16:24])[0]
+    maxy = struct.unpack("d", envelope[24:32])[0]
+    x = (minx + maxx) / 2
+    y = (miny + maxy) / 2
+
+    return Point(x, y)
 
 
 def copy_rTree_tables(

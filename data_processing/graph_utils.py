@@ -11,20 +11,24 @@ from data_processing.file_paths import file_paths
 logger = logging.getLogger(__name__)
 
 
-def create_graph_from_gpkg(hydrofabric: Path) -> ig.Graph:
+def get_from_to_id_pairs(
+    hydrofabric: Path = file_paths.conus_hydrofabric(), ids: Set = None
+) -> List[tuple]:
     """
-    Creates a directed network flow graph from a geopackage file, representing hydrological connections.
+    Retrieves the from and to IDs from the specified hydrofabric.
 
-    This function reads edge connections (id to toid) from the specified geopackage, deduplicates them,
-    and constructs a directed graph where edges represent water flow directions.
+    This function reads the from and to IDs from the specified hydrofabric and returns them as a list of tuples.
 
     Args:
-        hydrofabric (Path): The file path to the geopackage containing hydrological data.
-
+        hydrofabric (Path, optional): The file path to the hydrofabric. Defaults to file_paths.conus_hydrofabric().
+        ids (Set, optional): A set of IDs to filter the results. Defaults to None.
     Returns:
-        ig.Graph: A directed graph representing the hydrological network.
+        List[tuple]: A list of tuples containing the from and to IDs.
     """
     sql_query = "SELECT id, toid FROM network WHERE id IS NOT NULL"
+    if ids:
+        ids = [f"'{x}'" for x in ids]
+        sql_query = f"{sql_query} AND id IN ({','.join(ids)})"
     try:
         con = sqlite3.connect(str(hydrofabric.absolute()))
         edges = con.execute(sql_query).fetchall()
@@ -32,12 +36,25 @@ def create_graph_from_gpkg(hydrofabric: Path) -> ig.Graph:
     except sqlite3.Error as e:
         logger.error(f"SQLite error: {e}")
         raise
-
-    # Remove duplicate edges for an accurate representation of the network
     unique_edges = list(set(edges))
-    logger.debug("Building hydrological graph network with igraph.")
-    network_graph = ig.Graph.TupleList(unique_edges, directed=True)
-    return network_graph
+    return unique_edges
+
+
+def create_graph_from_gpkg(hydrofabric: Path) -> ig.Graph:
+    """
+    Creates a graph from the specified hydrofabric.
+
+    This function reads the hydrological data from the specified geopackage file and creates a graph from it.
+
+    Args:
+        hydrofabric (Path): The file path to the hydrofabric.
+
+    Returns:
+        ig.Graph: The hydrological network graph.
+    """
+    edges = get_from_to_id_pairs(hydrofabric)
+    graph = ig.Graph.TupleList(edges, directed=True)
+    return graph
 
 
 @cache
@@ -93,46 +110,3 @@ def get_upstream_ids(names: Union[str, List[str]]) -> Set[str]:
             parent_ids.add(graph.vs[node]["name"])
 
     return parent_ids
-
-
-def get_flow_lines_in_set(upstream_ids: Union[str, List[str]]) -> dict:
-    """
-    Retrieves flow lines and water bodies associated with given upstream IDs.
-    Args:
-        upstream_ids (Union[str, List[str]]): The upstream IDs to process.
-
-    Returns:
-        dict: A dictionary containing 'to_lines' and 'to_wbs' keys. 'to_lines' maps to a list of
-              flow lines, and 'to_wbs' maps to a dictionary of water bodies.
-    """
-    graph = get_graph()
-    if isinstance(upstream_ids, str):
-        upstream_ids = [upstream_ids]
-
-    to_lines = []
-    to_wbs = {}
-    for name in upstream_ids:
-        process_upstream_id(name, graph, to_lines, to_wbs)
-
-    return {"to_lines": to_lines, "to_wbs": to_wbs}
-
-
-def process_upstream_id(
-    name: str, graph: ig.Graph, to_lines: List[List[str]], to_wbs: dict
-) -> None:
-    """
-    Processes a single upstream ID to update the to_lines and to_wbs structures.
-
-    Args:
-        name (str): The name of the upstream ID being processed.
-        graph (ig.Graph): The graph object.
-        to_lines (List[List[str]]): Accumulator for lines in the graph.
-        to_wbs (dict): Accumulator for waterbodies in the graph.
-    """
-    node = graph.vs.find(name=name)
-    to_nexi = node.successors()
-    for nex in to_nexi:
-        nm = nex["name"]
-        to_lines.append([name, nm])
-        if nm not in to_wbs:
-            to_wbs[nm] = [next["name"] for next in nex.successors()]
