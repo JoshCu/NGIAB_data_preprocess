@@ -12,12 +12,10 @@ async function subset() {
         .then(response => response.text())
         .then(filename => {
             console.log(filename);
-
-
             const endTime = performance.now(); // Stop the timer
             const duration = endTime - startTime; // Calculate the duration in milliseconds
             console.log('Request took ' + duration / 1000 + ' milliseconds');
-            document.getElementById('output-path').textContent = "Done in " + duration / 1000 + "s, subset to " + filename;
+            document.getElementById('output-path').innerHTML = "Done in " + duration / 1000 + "s, subset to <a href='file:///" + filename + "'>" + filename + "</a>";
         })
         .catch(error => {
             console.error('Error:', error);
@@ -32,6 +30,8 @@ async function subset_to_file() {
     console.log('subsetting to file');
     document.getElementById('subset-to-file-button').disabled = true;
     document.getElementById('subset-to-file-loading').style.visibility = "visible";
+    const startTime = performance.now(); // Start the timer
+
     fetch('/subset_to_file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -40,8 +40,10 @@ async function subset_to_file() {
         .then(response => response.text())
         .then(filename => {
             console.log(filename);
-            // popup with the file name
-            document.getElementById('output-path').textContent = "subset to " + filename;
+            const endTime = performance.now(); // Stop the timer
+            const duration = endTime - startTime; // Calculate the duration in milliseconds
+            console.log('Request took ' + duration / 1000 + ' milliseconds');
+            document.getElementById('output-path').innerHTML = "Done in " + duration / 1000 + "s, subset to <a href='file:///" + filename + "'>" + filename + "</a>";
         })
         .catch(error => {
             console.error('Error:', error);

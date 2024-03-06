@@ -205,7 +205,7 @@ def get_flowlines_from_wbids():
 
     # merge the dictionaries
     divide_geometries.update(nexus_geometries)
-    logger.info(flow_lines)
+    logger.debug(flow_lines)
 
     # generate a line for each flowline
     to_nexus = []  # flow from wb to nexus
@@ -237,7 +237,8 @@ def get_flowlines_from_wbids():
 def subset_selection():
     wb_ids = list(json.loads(request.data.decode("utf-8")).keys())
     logger.info(wb_ids)
-    subset_geopackage = subset(wb_ids)
+    subset_name = wb_ids[0]
+    subset_geopackage = subset(wb_ids, subset_name=subset_name)
     return subset_geopackage, 200
 
 
@@ -245,12 +246,14 @@ def subset_selection():
 def subset_to_file():
     wb_ids = list(json.loads(request.data.decode("utf-8")).keys())
     logger.info(wb_ids)
+    subset_name = wb_ids[0]
     total_subset = get_upstream_ids(wb_ids)
-    total_subset = list(filter(lambda x: "wb" in x, total_subset))
-    total_subset = sorted(total_subset)
-    with open(file_paths.root_output_dir() / "subset.txt", "w") as f:
+    subset_paths = file_paths(subset_name)
+    output_file = subset_paths.subset_dir() / "subset.txt"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_file, "w") as f:
         f.write("\n".join(total_subset))
-    return "success", 200
+    return str(output_file), 200
 
 
 @main.route("/forcings", methods=["POST"])

@@ -132,7 +132,8 @@ async function populate_flowlines() {
                             map.removeLayer(i);
                         }
                     }
-                    console.log(data);
+                    // loud!
+                    // console.log(data);
                     to_wb = JSON.parse(data['to_wb']);
                     to_nexus = JSON.parse(data['to_nexus']);
                     nexus = JSON.parse(data['nexus']);
