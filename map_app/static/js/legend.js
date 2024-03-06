@@ -3,14 +3,6 @@ document.addEventListener('DOMContentLoaded', function () {
     // bind the form to the function
     // load in html template for the control panel
     $(".custom_legend").load("static/html/legend.html");
-    // disable propagation to prevent map click event from firing
-    // $(".custom_legend").mouseover(function (f) {
-    //     $("#map").css("pointer-events", "none");
-    // });
-    // $(".custom_legend").mouseout(function (f) {
-    //     $("#map").css("pointer-events", "auto");
-    // });
-    // toggle the legend
     $(".custom_legend").click(function (f) {
         // stop the map click event from firing        
         if (f.target.classList.contains("legend_icon")) {
@@ -34,15 +26,15 @@ document.addEventListener('DOMContentLoaded', function () {
             $(".leaflet-marker-pane").toggle(200);
             $(".leaflet-shadow-pane").toggle(200);
         }
+        if (f.target.id === "high_contrast") {
+            $("body").toggleClass("high-contrast");
+            console.log(f.target.id);
+            console.log(f.target);
+        }
 
         // disable propagation to prevent map click event from firing
         f.stopPropagation();
         return;
 
     });
-
 });
-
-
-async function toggle_selected_catchments() {
-}
