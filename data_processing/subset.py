@@ -17,20 +17,19 @@ from data_processing.graph_utils import get_upstream_ids
 logger = logging.getLogger(__name__)
 
 
-def create_subset_gpkg(ids: List[str], hydrofabric: str) -> Path:
-    output_dir = file_paths.root_output_dir() / ids[0]
-    output_dir.mkdir(parents=True, exist_ok=True)
-    subset_gpkg_name = output_dir / f"{ids[0]}_subset.gpkg"
+def create_subset_gpkg(ids: List[str], hydrofabric: str, paths: file_paths) -> Path:
 
+    subset_gpkg_name = paths.geopackage_path()
+    subset_gpkg_name.parent.mkdir(parents=True, exist_ok=True)
     if os.path.exists(subset_gpkg_name):
         os.remove(subset_gpkg_name)
 
-    template = file_paths.template_gpkg()
+    template = paths.template_gpkg()
     logger.info(f"Copying template {template} to {subset_gpkg_name}")
     shutil.copy(template, subset_gpkg_name)
 
     triggers = remove_triggers(subset_gpkg_name)
-    logger.info(f"Removed triggers from subset gpkg {subset_gpkg_name}")
+    logger.debug(f"Removed triggers from subset gpkg {subset_gpkg_name}")
 
     subset_tables = [
         "divides",
@@ -47,13 +46,13 @@ def create_subset_gpkg(ids: List[str], hydrofabric: str) -> Path:
         subset_table(table, ids, hydrofabric, str(subset_gpkg_name.absolute()))
 
     add_triggers(triggers, subset_gpkg_name)
-    return subset_gpkg_name
+    logger.debug(f"Added triggers to subset gpkg {subset_gpkg_name}")
 
 
-def subset_parquet(ids: List[str]) -> None:
+def subset_parquet(ids: List[str], paths: file_paths) -> None:
     cat_ids = [x.replace("wb", "cat") for x in ids]
-    parquet_path = file_paths.parquet()
-    output_dir = file_paths.root_output_dir() / ids[0]
+    parquet_path = paths.parquet()
+    output_dir = paths.subset_dir()
     logger.debug(str(parquet_path))
     logger.info("Reading parquet")
     table = pa_parquet.read_table(parquet_path)
@@ -77,8 +76,9 @@ def make_x_walk(hydrofabric: str, out_dir: str) -> None:
         json.dump(data, fp, indent=2)
 
 
-def make_geojson(hydrofabric: Path) -> None:
-    out_dir = file_paths.root_output_dir() / hydrofabric.stem.replace("_subset", "")
+def make_geojson(paths: file_paths) -> None:
+    hydrofabric = paths.geopackage_path()
+    out_dir = paths.subset_dir()
     try:
         catchments = gpd.read_file(hydrofabric, layer="divides", engine="pyogrio")
         nexuses = gpd.read_file(hydrofabric, layer="nexus", engine="pyogrio")
@@ -99,24 +99,27 @@ def make_geojson(hydrofabric: Path) -> None:
         raise e
 
 
-def subset(wb_ids: List[str], hydrofabric: str = file_paths.conus_hydrofabric()) -> str:
-    if isinstance(wb_ids, str):
-        wb_ids = [wb_ids]
+def subset(
+    wb_ids: List[str], hydrofabric: str = file_paths.conus_hydrofabric(), subset_name: str = None
+) -> str:
 
     upstream_ids = get_upstream_ids(wb_ids)
-    subset_output_dir = file_paths.root_output_dir() / upstream_ids[0]
-    remove_existing_output_dir(subset_output_dir)
 
-    gpkg_name = create_subset_gpkg(upstream_ids, hydrofabric)
-    output_gpkg = subset_output_dir / gpkg_name
+    if not subset_name:
+        # if the name isn't provided, use the first upstream id
+        upstream_ids = sorted(list(upstream_ids))
+        subset_name = upstream_ids[0]
 
-    convert_gpkg_to_temp(subset_output_dir, output_gpkg)
-    subset_parquet(upstream_ids)
-    make_geojson(gpkg_name)
-
-    move_files_to_config_dir(subset_output_dir)
+    paths = file_paths(subset_name)
+    remove_existing_output_dir(paths.subset_dir())
+    create_subset_gpkg(upstream_ids, hydrofabric, paths)
+    convert_gpkg_to_temp(paths)
+    subset_parquet(upstream_ids, paths)
+    make_geojson(paths)
+    move_files_to_config_dir(paths.subset_dir())
     logger.info(f"Subset complete for {upstream_ids}")
-    return str(subset_output_dir.absolute())
+
+    return str(paths.subset_dir())
 
 
 def remove_existing_output_dir(subset_output_dir: str) -> None:
@@ -125,7 +128,9 @@ def remove_existing_output_dir(subset_output_dir: str) -> None:
         os.system(f"rm -rf {subset_output_dir / 'forcings'}")
 
 
-def convert_gpkg_to_temp(subset_output_dir: str, output_gpkg: str) -> None:
+def convert_gpkg_to_temp(paths: file_paths) -> None:
+    output_gpkg = paths.geopackage_path()
+    subset_output_dir = paths.subset_dir()
     os.system(f"ogr2ogr -f GPKG {subset_output_dir / 'temp.gpkg'} {output_gpkg}")
     os.system(f"rm {output_gpkg}* && mv {subset_output_dir / 'temp.gpkg'} {output_gpkg}")
 
@@ -136,5 +141,5 @@ def move_files_to_config_dir(subset_output_dir: str) -> None:
 
     files = [x for x in subset_output_dir.iterdir()]
     for file in files:
-        if file.suffix in [".gpkg", ".csv", ".json", ".geojson"]:
+        if file.suffix in [".csv", ".json", ".geojson"]:
             os.system(f"mv {file} {config_dir}")

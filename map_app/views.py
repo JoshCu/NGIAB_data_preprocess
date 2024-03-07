@@ -4,24 +4,29 @@ import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-
+import logging
 import geopandas as gpd
 import requests
-import shapely as sh
 from flask import Blueprint, jsonify, render_template, request
-from shapely import unary_union
-from shapely.geometry import LineString, MultiLineString, Point
-from shapely.wkb import loads
+from shapely import unary_union, to_geojson
+from shapely.geometry import LineString, Point, shape
+from shapely.ops import transform
+import pyproj
+import multiprocessing
 
-import data_processing.gpkg_utils as gpkg_u
+from data_processing.gpkg_utils import get_table_crs, blob_to_geometry, blob_to_centroid
 from data_processing.create_realization import create_cfe_wrapper
 from data_processing.file_paths import file_paths
 from data_processing.forcings import create_forcings
-from data_processing.graph_utils import get_flow_lines_in_set, get_upstream_ids
+from data_processing.graph_utils import get_from_to_id_pairs, get_upstream_ids
 from data_processing.subset import subset
+
+from time import time
 
 main = Blueprint("main", __name__)
 intra_module_db = {}
+
+logger = logging.getLogger(__name__)
 
 
 @main.route("/")
@@ -31,7 +36,7 @@ def index():
 
 def get_wbid_from_point(coords):
     # inpute coords are EPSG:4326
-    print(coords)
+    logger.info(coords)
     # takes a point and returns the wbid of the watershed it is in
     # create a geometry mask for the point
     # load the watershed boundaries
@@ -93,7 +98,7 @@ def wbids_to_geojson(wb_dict):
         wb_dict[k] = Point(v[1], v[0])
     d = {"col1": wb_dict.keys(), "geometry": wb_dict.values()}
     points = gpd.GeoDataFrame(d, crs="EPSG:4326")
-    print(points)
+    logger.debug(points)
     q = Path(__file__).parent.parent / "data_sources" / "conus.gpkg"
     df = gpd.read_file(q, format="GPKG", layer="divides", mask=points)
     # convert crs to 4326
@@ -104,7 +109,7 @@ def wbids_to_geojson(wb_dict):
 @main.route("/get_geojson_from_wbids", methods=["POST"])
 def get_geojson_from_wbids():
     wb_dict = json.loads(request.data.decode("utf-8"))
-    print(wb_dict)
+    logger.debug(wb_dict)
     if len(wb_dict) == 0:
         return [], 204
     try:
@@ -113,138 +118,142 @@ def get_geojson_from_wbids():
         return jsonify({"error": str(e)}), 500
 
 
-def blob_to_geometry(blob):
-    # from http://www.geopackage.org/spec/#gpb_format
-    # byte 0-2 don't need
-    # byte 3 bit 0 (bit 24)= 0 for little endian, 1 for big endian (used for srs id and envelope type)
-    # byte 3 bit 1-3 (bit 25-27)= envelope type (needed to calculate envelope size)
-    # byte 3 bit 4 (bit 28)= empty geometry flag
-    envelope_type = (blob[3] & 14) >> 1
-    empty = (blob[3] & 16) >> 4
-    if empty:
-        return None
-    envelope_sizes = [0, 32, 48, 48, 64]
-    envelope_size = envelope_sizes[envelope_type]
-    header_byte_length = 8 + envelope_size
-    # everything after the header is the geometry
-    geom = blob[header_byte_length:]
-    # convert to hex
-    geometry = loads(geom)
-    return geometry
-
-
-def get_geodf_from_wb_ids(upstream_ids):
-    line_dict = get_flow_lines_in_set(upstream_ids)
-    # format ids as ('id1', 'id2', 'id3')
+def get_upstream_geometry(upstream_ids):
     geopackage = file_paths.conus_hydrofabric()
     sql_query = f"SELECT id, geom FROM divides WHERE id IN {tuple(upstream_ids)}"
     # remove the trailing comma from single element tuples
     sql_query = sql_query.replace(",)", ")")
     # get nexus locations
-    nexi_keys = list(line_dict["to_wbs"].keys())
-    sql_query2 = f"SELECT id, geom FROM nexus WHERE id IN {tuple(nexi_keys)}"
-    sql_query2 = sql_query2.replace(",)", ")")
-    # would be nice to use geopandas here but it doesn't support sql on geopackages
-    con = sqlite3.connect(geopackage)
-    result = con.execute(sql_query).fetchall()
-    result2 = con.execute(sql_query2).fetchall()
-    con.close()
+    start_time = time()
+    with sqlite3.connect(geopackage) as con:
+        result = con.execute(sql_query).fetchall()
+    logger.info(f"sql took {time() - start_time}")
     # convert the blobs to geometries
-    geoms = {}
-    nexs = {}
     geometry_list = []
-    print(f"sql returned at {datetime.now()}")
+    logger.debug(f"sql returned at {datetime.now()}")
     for r in result:
         geometry = blob_to_geometry(r[1])
         if geometry is not None:
             geometry_list.append(geometry)
-            geoms[r[0]] = geometry.centroid
-    for r in result2:
-        geometry = blob_to_geometry(r[1])
-        if geometry is not None:
-            nexs[r[0]] = geometry.centroid
-    print(f"converted blobs to geometries at {datetime.now()}")
-    to_lines = []
-    for wb, nex in line_dict["to_lines"]:
-        if wb not in geoms or nex not in nexs:
-            continue
-        to_lines.append(LineString([geoms[wb], nexs[nex]]))
-    lngth = sum(x.length for x in to_lines) / max(len(to_lines), 1)
-    nexs_dir = []
-    nex_pts = []
-    for nex, targets in line_dict["to_wbs"].items():
-        if not nex in nexs:
-            continue
-        for target in targets:
-            if not target in geoms:
-                continue
-            nexs_dir.append(LineString([nexs[nex], geoms[target]]))
-        nex_pts.append(nexs[nex].buffer(lngth / 4, 8))
-    merged_tolines = unary_union(to_lines)
-    merged_nexs = unary_union(nexs_dir)
-
-    # split geometries into chunks and run unary_union in parallel
+    logger.debug(f"converted blobs to geometries at {datetime.now()}")
+    # split geometries into chunks and run unary_union in parallel?
+    start_time = time()
     merged_geometry = unary_union(geometry_list)
-    # create a geodataframe from the geometry
-    d1 = {"col1": [upstream_ids[0] + "_merged_geometry"], "geometry": [merged_geometry]}
-    d2 = {"col1": [upstream_ids[0] + "_to_lines"], "geometry": [merged_tolines]}
-    d3 = {"col1": [upstream_ids[0] + "_from_nexus"], "geometry": [merged_nexs]}
-    d4 = {"col1": [], "geometry": []}
-    for i, pt in enumerate(nex_pts):
-        d4["col1"].append(upstream_ids[0] + "_nex_circles" + str(i))
-        d4["geometry"].append(pt)
-    ds = {
-        "merged_geometry": d1,
-        "merged_tolines": d2,
-        "merged_from_nexus": d3,
-        "nexus_circles": d4,
-    }
-    gs = {}
-    for k, d in ds.items():
-        gs[k] = gpd.GeoDataFrame(d, crs="EPSG:5070")
-    return gs
+    logger.info(f"unary_union took {time() - start_time}")
+
+    return merged_geometry
+
+
+def convert_to_4326(shapely_geometry):
+    # convert to web mercator
+    if shapely_geometry.is_empty:
+        return shapely_geometry
+    geopkg_crs = get_table_crs(file_paths.conus_hydrofabric(), "divides")
+    source_crs = pyproj.CRS(geopkg_crs)
+    logger.debug(f"source crs: {source_crs}")
+    target_crs = pyproj.CRS("EPSG:4326")
+    project = pyproj.Transformer.from_crs(source_crs, target_crs, always_xy=True).transform
+    new_geometry = transform(project, shapely_geometry)
+    logger.debug(f" new geometry: {new_geometry}")
+    logger.debug(f"old geometry: {shapely_geometry}")
+    return new_geometry
 
 
 @main.route("/get_upstream_geojson_from_wbids", methods=["POST"])
 def get_upstream_geojson_from_wbids():
-    print(f"getting graph at {datetime.now()}")
+    start_time = time()
+    logger.debug(f"got upstream wbids at {datetime.now()}")
+
+    wb_id = json.loads(request.data.decode("utf-8"))
+    logger.debug(f"got wb_id: {wb_id} at {datetime.now()}")
+    upstream_ids = get_upstream_ids(wb_id)
+    logger.debug(f"got upstream ids at {datetime.now()}")
+    # remove the selected wb_id from the set
+    upstream_ids.remove(wb_id)
+    logger.debug(f"removed wb_id from upstream_ids at {datetime.now()}")
+    upstream_polygon = get_upstream_geometry(upstream_ids)
+    logger.debug(f"got upstream geometry at {datetime.now()}")
+    upstream_polygon = convert_to_4326(upstream_polygon)
+    logger.debug(f"converted to 4326 at {datetime.now()}")
+    logger.debug(f"total time: {time() - start_time}")
+    return to_geojson(upstream_polygon), 200
+
+
+@main.route("/get_flowlines_from_wbids", methods=["POST"])
+def get_flowlines_from_wbids():
     wb_id = json.loads(request.data.decode("utf-8"))
     upstream_ids = get_upstream_ids(wb_id)
-    print(f"got upstream ids at {datetime.now()}")
-    upstream_ids = list(set(upstream_ids))
-    gdfs = get_geodf_from_wb_ids(upstream_ids)
-    print(f"got geodf at {datetime.now()}")
-    for k in gdfs:
-        gdfs[k] = gdfs[k].to_crs(epsg=4326)
-    print(f"converted crs at {datetime.now()}")
+    flow_lines = get_from_to_id_pairs(ids=upstream_ids)
+    all_ids = list(set([x for y in flow_lines for x in y]))
+    geopackage = file_paths.conus_hydrofabric()
+    sql_query_divides = f"SELECT id, geom FROM divides WHERE id IN {tuple(all_ids)}"
+    sql_query_nexus = f"SELECT id, geom FROM nexus WHERE id IN {tuple(all_ids)}"
+    # remove the trailing comma from single element tuples
+    sql_query_divides = sql_query_divides.replace(",)", ")")
+    sql_query_nexus = sql_query_nexus.replace(",)", ")")
+    # get nexus locations
+    with sqlite3.connect(geopackage) as con:
+        result_divides = con.execute(sql_query_divides).fetchall()
+        result_nexus = con.execute(sql_query_nexus).fetchall()
 
-    def serialize_geodf(obj):
-        if isinstance(obj, gpd.GeoDataFrame):
-            return obj.to_json()
+    divide_geometries = {}
+    nexus_geometries = {}
+    for r in result_divides:
+        divide_geometries[r[0]] = blob_to_centroid(r[1])
+    for r in result_nexus:
+        nexus_geometries[r[0]] = blob_to_geometry(r[1])
+
+    # merge the dictionaries
+    divide_geometries.update(nexus_geometries)
+    logger.debug(flow_lines)
+
+    # generate a line for each flowline
+    to_nexus = []  # flow from wb to nexus
+    to_wb = []  # flow from nexus to wb
+    for line in flow_lines:
+        if line[0].startswith("nex"):
+            # only pairs beginning with nex flow to wb, tnx (terminal nexus) don't flow
+            to_wb.append(LineString([divide_geometries[line[0]], divide_geometries[line[1]]]))
         else:
-            raise TypeError()
+            to_nexus.append(LineString([divide_geometries[line[0]], divide_geometries[line[1]]]))
 
-    return json.dumps(gdfs, default=serialize_geodf), 200
+    to_wb = convert_to_4326(unary_union(to_wb))
+    to_nexus = convert_to_4326(unary_union(to_nexus))
+    if len(nexus_geometries) > 0:
+        nexus_geometries = unary_union(list(nexus_geometries.values()))
+        nexus_geometries = convert_to_4326(nexus_geometries)
+        response = {
+            "to_wb": to_geojson(to_wb),
+            "to_nexus": to_geojson(to_nexus),
+            "nexus": to_geojson(nexus_geometries),
+        }
+    else:
+        response = {"to_wb": to_geojson(to_wb), "to_nexus": to_geojson(to_nexus)}
+
+    return response, 200
 
 
 @main.route("/subset", methods=["POST"])
 def subset_selection():
     wb_ids = list(json.loads(request.data.decode("utf-8")).keys())
-    print(wb_ids)
-    subset_geopackage = subset(wb_ids)
+    logger.info(wb_ids)
+    subset_name = wb_ids[0]
+    subset_geopackage = subset(wb_ids, subset_name=subset_name)
     return subset_geopackage, 200
 
 
 @main.route("/subset_to_file", methods=["POST"])
 def subset_to_file():
     wb_ids = list(json.loads(request.data.decode("utf-8")).keys())
-    print(wb_ids)
+    logger.info(wb_ids)
+    subset_name = wb_ids[0]
     total_subset = get_upstream_ids(wb_ids)
-    total_subset = list(filter(lambda x: "wb" in x, total_subset))
-    total_subset = sorted(total_subset)
-    with open(file_paths.root_output_dir() / "subset.txt", "w") as f:
+    subset_paths = file_paths(subset_name)
+    output_file = subset_paths.subset_dir() / "subset.txt"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_file, "w") as f:
         f.write("\n".join(total_subset))
-    return "success", 200
+    return str(output_file), 200
 
 
 @main.route("/forcings", methods=["POST"])
@@ -257,22 +266,18 @@ def get_forcings():
     # get the forcings
     start_time = datetime.strptime(start_time, "%Y-%m-%dT%H:%M")
     end_time = datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
-    # print(intra_module_db)
+    # logger.info(intra_module_db)
     app = intra_module_db["app"]
-    debug = app.debug
-    if debug:
-        app.debug = False
-        print(f"get_forcings() disabled debug mode at {datetime.now()}")
+    debug_enabled = app.debug
+    app.debug = False
+    logger.info(f"get_forcings() disabled debug mode at {datetime.now()}")
     try:
         create_forcings(start_time, end_time, wb_id)
     except Exception as e:
-        if debug:
-            app.debug = True
-        print(f"get_forcings() failed with error: {str(e)}")
-        raise e
-    if debug:
-        app.debug = True
-        print(f"get_forcings() re-enabled debug mode at {datetime.now()}")
+        logger.info(f"get_forcings() failed with error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    app.debug = debug_enabled
+
     return "success", 200
 
 
@@ -290,16 +295,10 @@ def get_realization():
     return "success", 200
 
 
-@main.route("/get_vpu", methods=["POST"])
-def get_vpu():
-    vpu_boundaries = gpkg_u.get_vpu_gdf()
-    return vpu_boundaries.to_json(), 200
-
-
 @main.route("/get_wbids_from_vpu", methods=["POST"])
 def get_wbids_from_vpu():
     vpu = json.loads(request.data.decode("utf-8"))
-    vpu = sh.geometry.shape(vpu)
+    vpu = shape(vpu)
     # convert to crs 5070
     vpu = gpd.GeoDataFrame({"geometry": [vpu]}, crs="EPSG:4326")
     vpu = vpu.to_crs(epsg=5070)
@@ -320,13 +319,13 @@ def get_logs():
     log_file_path = "app.log"
     try:
         with open(log_file_path, "r") as file:
-            # Read the last 100 lines
-            lines = file.readlines()[-100:]
-            lines = [line.strip() for line in lines]
-            # reverse the lines so the most recent is first
-            # easier than fixgin the frontend to auto scoll to the bottom
-            reversed_lines = list(reversed(lines))
-            # manual cast because jsonify is awful at type evaluation
+            lines = file.readlines()
+            reversed_lines = []
+            for line in reversed(lines):
+                if "werkzeug" not in line:
+                    reversed_lines.append(line)
+                if len(reversed_lines) > 100:
+                    break
             return jsonify({"logs": reversed_lines}), 200
     except Exception as e:
         return jsonify({"error": str(e)})

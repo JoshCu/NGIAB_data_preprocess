@@ -4,21 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <title>Map Application</title>
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <style>
-        div.leaflet-layer:nth-child(1) {
-            filter: saturate(150%);
-        }
-
-        div.leaflet-layer:nth-child(n+2) {
-            filter: contrast(2345);
-            mix-blend-mode: multiply;
-        }
-    </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/legend.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/map.css') }}">
 </head>
 
 <body>
@@ -38,12 +31,12 @@
         <section id="basins-container">
             <h2>Selected Basins</h2>
             <div id="selected-basins">None - get clicking!</div>
-            <button id="subset-button">Subset</button>
+            <button id="subset-button">Create subset gpkg</button>
             <img class="loading" src="{{ url_for('static', filename='resources/loading.gif') }}" alt="Loading"
                 id="subset-loading">
-            <button id="subset2-button">Output list to file</button>
+            <button id="subset-to-file-button">Output list to file</button>
             <img class="loading" src="{{ url_for('static', filename='resources/loading.gif') }}" alt="Loading"
-                id="subset2-loading">
+                id="subset-to-file-loading">
             <div id="output-path"></div>
         </section>
 
@@ -66,7 +59,7 @@
                 <strong>Warning: This will take a while</strong>
             </div>
             <button id="forcings-button">Create Forcing From Zarrs</button>
-            <img class="loading" src="{{ url_for('static', filename='resources/loading.gif') }}" alt="Loading"
+            <img class=" loading" src="{{ url_for('static', filename='resources/loading.gif') }}" alt="Loading"
                 id="forcings-loading">
             <!-- <p>Creates a cached netcdf after fetching from S3.</p> -->
 
@@ -91,8 +84,9 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.6.2/proj4.js"></script>
-    <script src="{{ url_for('static', filename='js/control_panel.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/data_processing.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js' ) }}"></script>
+    <script src="{{ url_for('static', filename='js/legend.js') }}"></script>
 
 </body>
 

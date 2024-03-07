@@ -1,22 +1,26 @@
-# "end to end" tools for NGIAB data preparation
-Quick disclaimer: This has had very little polish and I expect it to be rearranged shortly. see issues.  
-The code needs a refactor to make it easier to understand, adapt, and reuse elsewhere.
+# Tools for NGIAB data preparation
 
+### This is an early version, help us improve it.
+This is still in development, your feedback and patience is appreciated.
+If you have any suggestions to improve or find bugs that need fixing, submit an issue here on github.
+
+![map screenshot](./map_app/static/resources/screenshot.png)
 
 ## Aproximate workflow
 1) Select the water basins you're interested in on the map
 1) Click subset, this creates a geopackage with the waterbains you've selected + any basin upstream of it
-1) pick a date and time
-1) generate forcings for your water basins   
+1) Pick a date and time
+1) Generate forcings for your water basins
+1) Create a cfe realisation for your selected data
 
 # Running with docker and devcontainers
 The easiest way to get this all working is with [dev containers](https://code.visualstudio.com/docs/devcontainers/containers).     
 It's a docker container managed by vscode:   
-1) clone this repo   
-2) open it in vscode     
-3) click through the popups in the bottom right    
+1) Clone this repo   
+2) Open it in vscode     
+3) Click through the popups in the bottom right    
 depending on what you've already got installed, it may install wsl, docker, and the vscode devcontainer extension    
-4) wait for it to finish building, view the log to watch it build
+4) Wait for it to finish building, view the log to watch it build
 5) 
 ```bash
 cd data_sources
@@ -25,11 +29,17 @@ wget https://lynker-spatial.s3.amazonaws.com/v20.1/model_attributes.parquet
 cd ..
 # to run
 ./run.sh
-
+# the first run may seem slow to start as it needs to generate a river network
 ```   
 
-#### When using the tool, the map will tell you what folder it subset to inside the output folder in the root of this repo. The naming needs fixing and currently is just whatever waterbasin in the selection comes first alphabetically.
+#### When using the tool, the output will be ./output/<your-first-catchment>/
 *THERE IS NO OVERWRITE PROTECTION ON THE FOLDERS*
+
+# Branches
+## main
+This is the default branch, it will get less frequent updates, but will be more stable.
+## dev
+This will be updated more frequently, but it won't be as rigorously tested as main.
 
 <details>
     <summary>Manual installation</summary>
@@ -53,7 +63,7 @@ cd data_sources
 wget https://lynker-spatial.s3.amazonaws.com/v20.1/conus.gpkg
 wget https://lynker-spatial.s3.amazonaws.com/v20.1/model_attributes.parquet
 cd ..
-flask -A map_app run --debug
+./run.sh
 ```
 
 ## Forcings generation uses exact_extract
@@ -68,6 +78,6 @@ git clone https://github.com/isciences/exactextract.git
 cd exactextract
 pip install .
 cd ../NGIAB_data_preprocess
-flask -A map_app run --debug
+./run.sh
 ```
 </details>

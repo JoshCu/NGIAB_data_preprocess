@@ -1,0 +1,29 @@
+/* colourblind safe taken from https://personal.sron.nl/~pault/ */
+:root {
+    --selected-wb-outline: rgba(238, 51, 119, 0.7);
+    --selected-wb-fill: rgba(238, 51, 119, 0.316);
+
+    --upstream-wb-outline: rgba(238, 119, 51, 0.7);
+    --upstream-wb-fill: rgba(238, 119, 51, 0.278);
+
+    --flowline-to-wb-outline: rgba(0, 153, 136, 1);
+    --flowline-to-nexus-outline: rgba(0, 119, 187, 1);
+
+    --nexus-outline: rgba(1, 1, 1, 0.5);
+    --nexus-fill: rgba(79, 143, 222, 0.5);
+
+}
+
+.high-contrast {
+    --selected-wb-outline: rgba(0, 68, 136, 1);
+    --selected-wb-fill: rgba(0, 68, 136, 0.316);
+
+    --upstream-wb-outline: rgba(221, 170, 51, 1);
+    --upstream-wb-fill: rgba(221, 170, 51, 0.278);
+
+    --flowline-to-wb-outline: #000000;
+    --flowline-to-nexus-outline: #BB5566;
+
+    --nexus-outline: rgba(1, 1, 1, 0.5);
+    --nexus-fill: rgba(79, 143, 222, 0.5);
+}

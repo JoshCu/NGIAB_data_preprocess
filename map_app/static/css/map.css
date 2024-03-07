@@ -1,0 +1,53 @@
+@import "colors.css";
+
+div.leaflet-layer:nth-child(1) {
+    filter: saturate(150%);
+}
+
+div.leaflet-layer:nth-child(n+2) {
+    filter: contrast(2345);
+    mix-blend-mode: multiply;
+}
+
+/* Map container styling */
+#map {
+    height: 60vh;
+    min-height: 400px;
+    width: 100%;
+    margin-right: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.leaflet-interactive {
+    /* using rgba for fill so set opacity to 1 */
+    fill-opacity: 1;
+}
+
+.leaflet-interactive:hover {
+    filter: saturate(150%);
+    filter: brightness(150%);
+}
+
+.selected-wb-layer {
+    stroke: var(--selected-wb-outline);
+    fill: var(--selected-wb-fill);
+}
+
+.upstream-wb-layer {
+    stroke: var(--upstream-wb-outline);
+    fill: var(--upstream-wb-fill);
+}
+
+.flowline-to-wb-layer {
+    stroke: var(--flowline-to-wb-outline);
+}
+
+.flowline-to-nexus-layer {
+    stroke: var(--flowline-to-nexus-outline);
+}
+
+.nexus-layer {
+    stroke: var(--nexus-outline);
+    fill: var(--nexus-fill);
+}

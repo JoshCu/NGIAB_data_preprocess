@@ -1,8 +1,10 @@
 import logging
 import multiprocessing
 import os
+import time
 from pathlib import Path
 from typing import Tuple
+from functools import partial
 
 import geopandas as gpd
 import pandas as pd
@@ -52,10 +54,10 @@ def compute_store(stores: xr.Dataset, subset_dir: Path) -> xr.Dataset:
 
 def compute_and_save(
     rasters: xr.Dataset,
-    gdf_chunk: gpd.GeoDataFrame,
     forcings_dir: Path,
-    variable: str,
     times: pd.DatetimeIndex,
+    gdf_chunk: gpd.GeoDataFrame,
+    variable: str,
 ) -> pd.DataFrame:
     """
     Compute and save zonal stats for a given variable on a given chunk of the geodataframe.
@@ -94,6 +96,7 @@ def compute_zonal_stats(
     gdf: gpd.GeoDataFrame, merged_data: xr.Dataset, forcings_dir: Path, chunk_size=None
 ) -> None:
     logger.info("Computing zonal stats in parallel for all timesteps")
+    timer_start = time.time()
     for file in os.listdir(forcings_dir / "temp"):
         os.remove(forcings_dir / "temp" / file)
 
@@ -116,12 +119,11 @@ def compute_zonal_stats(
     gdf_chunks = list(chunk_gdf(gdf, chunk_size))
 
     with multiprocessing.Pool() as pool:
-        args = [
-            (merged_data, chunk, forcings_dir, variable, merged_data.time.values)
-            for chunk in gdf_chunks
-            for variable in variables
-        ]
-        pool.starmap(compute_and_save, args)
+        partial_compute_and_save = partial(
+            compute_and_save, merged_data, forcings_dir, merged_data.time.values
+        )
+        args = [(gdf_chunk, variable) for gdf_chunk in gdf_chunks for variable in variables]
+        pool.starmap(partial_compute_and_save, args)
     catchment_ids = gdf["divide_id"].unique()
 
     # clear catchment files
@@ -157,6 +159,7 @@ def compute_zonal_stats(
     for file in os.listdir(forcings_dir / "temp"):
         os.remove(forcings_dir / "temp" / file)
     os.rmdir(forcings_dir / "temp")
+    logger.info(f"Zonal stats computed in {time.time() - timer_start} seconds")
 
 
 def setup_directories(wb_id: str) -> file_paths:
@@ -190,7 +193,7 @@ def create_forcings(start_time: str, end_time: str, output_folder_name: str) -> 
         merged_data = xr.open_dataset(forcing_paths.cached_nc_file())
         logger.info("Opened cached nc file")
 
-    print(type(merged_data))
+    # print(type(merged_data))
     logger.info(f"Opened cached nc file: [{forcing_paths.cached_nc_file()}]")
     logger.info("Computing zonal stats")
     compute_zonal_stats(gdf, merged_data, forcing_paths.forcings_dir())
