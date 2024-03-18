@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 import cli.cli_handle as cli_handle
-
+import time
 # Interface file
 
 arg_options = { # name, description
@@ -20,6 +20,7 @@ arg_options = { # name, description
     "-f": "Creates forcing data for the given subset of waterbodies. Optionally can take a second argument for a config file",
     "-r": "Creates a realization for the given subset of waterbodies. Optionally can take a second argument for a config file",
     "-t": "Truncates the dataset to a smaller size, either by a ratio or by a number of waterbodies",
+    "--g_tnx": "Generate geopackage of wbs merged by connectivity. No args",
 }
 
 supported_filetypes = {
@@ -33,11 +34,11 @@ default_forcing_config = {
     "end_time": "2010-01-02, 12:00 AM",
 }
 
-for time in ["start_time", "end_time"]:
-    print(f"Converting {default_forcing_config[time]} to datetime")
-    default_forcing_config[time] = datetime.strptime(default_forcing_config[time], "%Y-%m-%d, %I:%M %p")
-    default_forcing_config[time] = datetime.strftime(default_forcing_config[time], "%Y-%m-%dT%H:%M")
-    print(f"Converted {default_forcing_config[time]} to datetime")
+for t in ["start_time", "end_time"]:
+    # print(f"Converting {default_forcing_config[time]} to datetime")
+    default_forcing_config[t] = datetime.strptime(default_forcing_config[t], "%Y-%m-%d, %I:%M %p")
+    default_forcing_config[t] = datetime.strftime(default_forcing_config[t], "%Y-%m-%dT%H:%M")
+    # print(f"Converted {default_forcing_config[time]} to datetime")
 
 
 
@@ -81,7 +82,25 @@ def get_output_foldername(ids):
     return ids[0]
     
 def main():
-    if "-h" in sys.argv or len(sys.argv) < 2:
+    
+    if "--g_tnx" in sys.argv:
+        cli_handle.gpkg_tnx_interface()
+        return
+    elif "--f" in sys.argv:
+        index = sys.argv.index("--f")
+        filename = sys.argv[index + 1]
+        path = file_paths.root_output_dir() / filename
+        if not path.exists():
+            raise Exception(f"File {path} does not exist")
+        clone_path = file_paths.root_output_dir() / filename.replace(".gpkg", "_clone0.gpkg")
+        clone_path1 = file_paths.root_output_dir() / filename.replace(".gpkg", "_clone1.gpkg")
+        os.system(f"cp {path} {clone_path}")
+        f2_start = time.time()
+        cli_handle._fix_gpkg(file_paths.root_output_dir(), clone_path.name, clone_path1.name)
+        f2_end = time.time()
+        print(f"Fixed file {filename} in {f2_end - f2_start} seconds")
+        return
+    elif "-h" in sys.argv or len(sys.argv) < 2:
         print_help()
         return
     path, filetype = get_input_wbs()
@@ -123,6 +142,7 @@ def main():
             else:
                 num = int(sys.argv[t_ind + 1])
         cli_handle.safe_truncate(ids, ratio, num)
+
 
 if __name__ == "__main__":
     main()

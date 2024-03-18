@@ -37,7 +37,7 @@
 
         <section id="basins-container">
             <h2>Selected Basins</h2>
-            <div id="selected-basins">None - get clicking!</div>
+            
             <button id="subset-button">Subset</button>
             <img class="loading" src="{{ url_for('static', filename='resources/loading.gif') }}" alt="Loading"
                 id="subset-loading">
@@ -47,6 +47,7 @@
             <!--Load wbids from file-->
             <input type="file" id="file-input" name="file-selector" accept=".txt">
             <div id="output-path"></div>
+            <div id="selected-basins">None - get clicking!</div>    
         </section>
 
         <section id="time-settings">

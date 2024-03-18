@@ -17,7 +17,7 @@ import data_processing.gpkg_utils as gpkg_u
 from data_processing.create_realization import create_cfe_wrapper
 from data_processing.file_paths import file_paths
 from data_processing.forcings import create_forcings
-from data_processing.graph_utils import get_flow_lines_in_set, get_upstream_ids
+from data_processing.graph_utils import get_flow_lines_in_set, get_upstream_ids, wbids_groupby_component
 from data_processing.subset import subset
 
 main = Blueprint("main", __name__)
@@ -94,17 +94,30 @@ def wbids_to_geojson(wb_dict):
     # for k, v in wb_dict.items():
         # wb_dict[k] = Point(v[1], v[0])
         # wb_dict[k] = Point(v.get("lng"), v.get("lat"))
-    d = {"col1": wb_dict.keys(), "geometry": wb_dict.values()}
-    points = gpd.GeoDataFrame(d, crs="EPSG:5070")
-    with open(file_paths.root_output_dir() / "full_gdf.json", "w") as f:
-        f.write(points.to_json())
+    # d = {"col1": wb_dict.keys(), "geometry": wb_dict.values()}
+    # points = gpd.GeoDataFrame(d, crs="EPSG:5070")
+    # with open(file_paths.root_output_dir() / "full_gdf.json", "w") as f:
+    #     f.write(points.to_json())
     # points = points.to_crs(crs="EPSG:5070")
     # print(points)
-    q = Path(__file__).parent.parent / "data_sources" / "conus.gpkg"
+    # q = Path(__file__).parent.parent / "data_sources" / "conus.gpkg"
     try:
-        print("reading file")
-        df = gpd.read_file(q, format="GPKG", layer="divides", mask=points)
-        print("read file")
+        # print("reading file")
+        # df = gpd.read_file(q, format="GPKG", layer="divides", mask=points)
+        # print("read file")
+        geom_df = gpkg_u.get_geom_from_wbids_map(wb_dict.keys())
+        subsets = wbids_groupby_component(wb_dict.keys())
+        wb_subset_indices = {}
+        for i, subset in enumerate(subsets):
+            for wb in subset:
+                wb_subset_indices[wb] = i
+        geom_df_filtered = {k: v for k, v in geom_df.items() if k in wb_subset_indices}
+        d = {"col1": list(geom_df_filtered.keys()), "geometry": list(geom_df_filtered.values())}
+        d["subset"] = [wb_subset_indices[k] for k in d["col1"]]
+        gdf = gpd.GeoDataFrame(d, crs="EPSG:5070")
+        gdf_simplify = gdf.dissolve(by="subset")
+        gdf_simplify = gdf_simplify.to_crs(epsg=4326)
+        return gdf_simplify.to_json()
     except Exception as e:
         print("error reading file")
         print(e)
@@ -118,7 +131,7 @@ def wbids_to_geojson(wb_dict):
 def get_geojson_from_wbids():
     wb_dict = json.loads(request.data.decode("utf-8"))
     print(len(wb_dict), "wbids")
-    wb_dict = gpkg_u.get_points_from_wbids(wb_dict)
+    # wb_dict = gpkg_u.get_points_from_wbids(wb_dict)
     print(len(wb_dict), "points")
     if len(wb_dict) == 0:
         return [], 204

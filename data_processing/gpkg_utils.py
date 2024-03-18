@@ -123,15 +123,15 @@ def blob_to_geometry(blob):
     geometry = loads(geom)
     return geometry
 
-def get_points_from_wbids(wbids: List[str]) -> dict:
+def get_geom_from_wbids_map(wbids: List[str], func = lambda x: x) -> dict:
     """
-    Get the points from the specified wbids.
+    Get the geometry from the specified wbids, using the specified function.
 
     Args:
         wbids (List[str]): The list of wbids.
 
     Returns:
-        gpd.GeoDataFrame: The points from the specified wbids.
+        dict: The processed geometry from the specified wbids.
     """
     db = sqlite3.connect(file_paths.conus_hydrofabric())
     wbids_list = [f"'{x}'" for x in wbids]
@@ -141,17 +141,29 @@ def get_points_from_wbids(wbids: List[str]) -> dict:
     data = db.execute(query).fetchall()
     print(f"Got data: {len(data)}")
     db.close()
-    wb_centroids = {}
+    wb_results = {}
     for i, d in enumerate(data):
         try:
-            wb_centroids[d[0]] = blob_to_geometry(d[1]).centroid
+            wb_results[d[0]] = func(blob_to_geometry(d[1]))
             # print(f"Got geometry: {wb_centroids[d[0]]}",end="\r")
         except Exception as e:
             print(f"Error getting geometry for {d[0]}: {e}",end="\r")
             logger.error(f"Error getting geometry for {d[0]}: {e}")
             raise e
     # raise Exception(wb_centroids)
-    return wb_centroids
+    return wb_results
+
+def get_points_from_wbids(wbids: List[str]) -> dict:
+    """
+    Get the points from the specified wbids.
+
+    Args:
+        wbids (List[str]): The list of wbids.
+
+    Returns:
+        dict: The points from the specified wbids.
+    """
+    return get_geom_from_wbids_map(wbids, lambda x: x.centroid)
 
 
 
