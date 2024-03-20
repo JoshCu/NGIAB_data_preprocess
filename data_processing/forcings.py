@@ -4,7 +4,8 @@ import os
 import time
 from pathlib import Path
 from typing import Tuple
-from functools import partial
+from functools import partial, cache
+from datetime import datetime
 
 import geopandas as gpd
 import pandas as pd
@@ -16,19 +17,21 @@ from data_processing.file_paths import file_paths
 
 logger = logging.getLogger(__name__)
 
+@cache
+def open_s3_store(url: str) -> s3fs.S3Map:
+    """Open an s3 store from a given url."""
+    return s3fs.S3Map(url, s3=s3fs.S3FileSystem(anon=True))
 
-def load_zarr_datasets(start_time: str, end_time: str) -> xr.Dataset:
+@cache
+def load_zarr_datasets() -> xr.Dataset:
     """Load zarr datasets from S3 within the specified time range."""
     forcing_vars = ["lwdown", "precip", "psfc", "q2d", "swdown", "t2d", "u2d", "v2d"]
     s3_urls = [
         f"s3://noaa-nwm-retrospective-3-0-pds/CONUS/zarr/forcing/{var}.zarr"
         for var in forcing_vars
     ]
-    s3_stores = [s3fs.S3Map(url, s3=s3fs.S3FileSystem(anon=True)) for url in s3_urls]
-
-    dataset = xr.open_mfdataset(s3_stores, combine="by_coords", parallel=True, engine="zarr").sel(
-        time=slice(start_time, end_time)
-    )
+    s3_stores = [open_s3_store(url) for url in s3_urls]
+    dataset = xr.open_mfdataset(s3_stores, parallel=True, engine="zarr")
     return dataset
 
 
@@ -39,10 +42,12 @@ def load_geodataframe(geopackage_path: str, projection: str) -> gpd.GeoDataFrame
 
 
 def clip_dataset_to_bounds(
-    dataset: xr.Dataset, bounds: Tuple[float, float, float, float]
+    dataset: xr.Dataset, bounds: Tuple[float, float, float, float], start_time: str, end_time: str
 ) -> xr.Dataset:
     """Clip the dataset to specified geographical bounds."""
-    return dataset.sel(x=slice(bounds[0], bounds[2]), y=slice(bounds[1], bounds[3]))
+    dataset = dataset.sel(x=slice(bounds[0], bounds[2]), y=slice(bounds[1], bounds[3]), time=slice(start_time, end_time))
+    logger.info("Selected time range and clipped to bounds")
+    return dataset
 
 
 def compute_store(stores: xr.Dataset, subset_dir: Path) -> xr.Dataset:
@@ -178,17 +183,24 @@ def create_forcings(start_time: str, end_time: str, output_folder_name: str) -> 
     gdf = load_geodataframe(forcing_paths.geopackage_path(), projection)
     logger.info("Got gdf")
 
+    if type(start_time) == datetime:
+        start_time = start_time.strftime("%Y-%m-%d %H:%M")
+    if type(end_time) == datetime:
+        end_time = end_time.strftime("%Y-%m-%d %H:%M")
+
     if not os.path.exists(forcing_paths.cached_nc_file()):
         logger.info("No cached nc file found")
         logger.info("Loading zarr stores, this may take a while.")
-        lazy_store = load_zarr_datasets(start_time, end_time)
+        lazy_store = load_zarr_datasets()
         logger.info("Got zarr stores")
 
-        clipped_store = clip_dataset_to_bounds(lazy_store, gdf.total_bounds)
+        clipped_store = clip_dataset_to_bounds(lazy_store, gdf.total_bounds, start_time, end_time)
         logger.info("Clipped stores")
 
+
+        merged_data = clipped_store
         merged_data = compute_store(clipped_store, forcing_paths.cached_nc_file())
-        logger.info("Computed store")
+        #logger.info("Computed store")
     else:
         merged_data = xr.open_dataset(forcing_paths.cached_nc_file())
         logger.info("Opened cached nc file")
