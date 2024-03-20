@@ -241,3 +241,35 @@ def get_table_crs(gpkg: str, table: str) -> str:
     crs = con.execute(sql_query).fetchone()[0]
     con.close()
     return crs
+
+def get_VPU_from_wbid(wbid: str) -> str:
+    """
+    Get the VPU from the WBID.
+
+    Args:
+        wbid (str): The WBID.
+
+    Returns:
+        str: The VPU.
+    """
+    con = sqlite3.connect(file_paths.conus_hydrofabric())
+    sql_query = f"SELECT vpu FROM network WHERE id = '{wbid}'"
+    vpu = con.execute(sql_query).fetchone()[0]
+    con.close()
+    return vpu
+
+def get_wbids_from_vpu(vpu: str) -> List[str]:
+    """
+    Get the WBIDs from the VPU.
+
+    Args:
+        vpu (str): The VPU.
+
+    Returns:
+        List[str]: The WBIDs.
+    """
+    con = sqlite3.connect(file_paths.conus_hydrofabric())
+    sql_query = f"SELECT id FROM network WHERE substr(id, 1, 2) = 'wb' and vpu = '{vpu}'"
+    wbids = con.execute(sql_query).fetchall()
+    con.close()
+    return [x[0] for x in wbids]
