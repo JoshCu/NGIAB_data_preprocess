@@ -1,4 +1,8 @@
 async function subset() {
+    if (Object.keys(wb_id_dict).length === 0) {
+        alert('Please select at least one item before subsetting');
+        return;
+    }
     console.log('subsetting');
     document.getElementById('subset-button').disabled = true;
     document.getElementById('subset-loading').style.visibility = "visible";
@@ -27,6 +31,10 @@ async function subset() {
 
 
 async function subset_to_file() {
+    if (Object.keys(wb_id_dict).length === 0) {
+        alert('Please select at least one item before subsetting');
+        return;
+    }
     console.log('subsetting to file');
     document.getElementById('subset-to-file-button').disabled = true;
     document.getElementById('subset-to-file-loading').style.visibility = "visible";
@@ -54,6 +62,10 @@ async function subset_to_file() {
 }
 
 async function forcings() {
+    if (document.getElementById('output-path').textContent === '') {
+        alert('Please subset the data before getting forcings');
+        return;
+    }
     console.log('getting forcings');
     document.getElementById('forcings-button').disabled = true;
     document.getElementById('forcings-loading').style.visibility = "visible";
@@ -84,6 +96,10 @@ async function forcings() {
 }
 
 async function realization() {
+    if (document.getElementById('output-path').textContent === '') {
+        alert('Please subset the data before getting a realization');
+        return;
+    }
     console.log('getting realization');
     document.getElementById('realization-button').disabled = true;
     const forcing_dir = document.getElementById('output-path').textContent;
