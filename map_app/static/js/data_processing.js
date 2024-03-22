@@ -1,6 +1,6 @@
 async function subset() {
     if (Object.keys(wb_id_dict).length === 0) {
-        alert('Please select at least one item before subsetting');
+        alert('Please select at least one basin in the map before subsetting');
         return;
     }
     console.log('subsetting');
@@ -32,7 +32,7 @@ async function subset() {
 
 async function subset_to_file() {
     if (Object.keys(wb_id_dict).length === 0) {
-        alert('Please select at least one item before subsetting');
+        alert('Please select at least one basin in the map before subsetting');
         return;
     }
     console.log('subsetting to file');
