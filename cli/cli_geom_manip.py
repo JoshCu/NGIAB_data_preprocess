@@ -29,13 +29,7 @@ from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString,
 from shapely.ops import unary_union
 from shapely import Geometry
 
-
-
-
-
-        
-
-
+# unary_union = coverage_union_all
 
 
 
@@ -165,88 +159,6 @@ def geometric_partition(
     # print(f"From {bounds} to {parts[0][1]} and {parts[1][1]}")
     return parts
 
-#reference based version of data_bisect
-# ideally, saves memory by not copying the data, and only manipulating
-# the list of wbids, not the geometries
-def data_bisect_reference(data:list[str], geoms:dict, bounds:tuple, path="")->list[list, tuple, str, tuple, tuple]:
-    if len(data) == 0:
-        return []
-    centr = lambda g: (g.centroid.x, g.centroid.y)
-    axis = 0 if bounds[2] - bounds[0] > bounds[3] - bounds[1] else 1
-    sortby = lambda x: centr(geoms[x])[0] if axis == 0 else centr(geoms[x])[1]
-    repl = lambda i, ax, v: tuple(v if ((~(k % 2) ^ ax) & (k//2 == i)) else l for k, l in enumerate(bounds))
-    dirs = ["L", "R"] if axis == 0 else ["D", "U"]
-    data.sort(key=sortby)
-    div = len(data) // 2
-    div_val = sortby(data[div])
-    bound0 = repl(1, axis, div_val)
-    bound1 = repl(0, axis, div_val)
-    return [
-        (data[:div], bound0, path + dirs[0], bounds, centr(geoms[data[div]])),
-        (data[div:], bound1, path + dirs[1], bounds, centr(geoms[data[div]]))
-        ]
-
-#reference based version of geometric_partition
-# same purpose as data_bisect_reference,
-# ideally saves memory by not copying the data
-def geometric_partition_reference(
-        data: list,
-        geoms: dict,
-        partition_size: int,
-        bounds: tuple,
-        path=""
-        ) -> list[list, tuple, str, tuple, tuple]:
-    assert bounds[0] < bounds[2], f"Bounds are not valid: {bounds}, {bounds[0]} < {bounds[2]}"
-    assert bounds[1] < bounds[3], f"Bounds are not valid: {bounds}, {bounds[1]} < {bounds[3]}"
-    if len(data) <= partition_size:
-        return [(data, bounds, path)]
-    parts = data_bisect_reference(data, geoms, bounds, path)
-    return parts
-
-
-#good enough version of geometric_partition
-# spacially partition, rather than by number of items
-# tetrasects the space, rather than bisecting the data
-def geometric_partition_spatial(
-        data: list,
-        partition_size: int,
-        bounds: tuple,
-        path=""
-        ) -> list[list, tuple, str, tuple, tuple]:
-    assert bounds[0] < bounds[2], f"Bounds are not valid: {bounds}, {bounds[0]} < {bounds[2]}"
-    assert bounds[1] < bounds[3], f"Bounds are not valid: {bounds}, {bounds[1]} < {bounds[3]}"
-    if len(data) <= partition_size:
-        return [(data, bounds, path)]
-    cxs = [(g.centroid.x, g.centroid.y, i) for i, g in enumerate(data)]
-    midp = ((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2)
-    left = []
-    right = []
-    for i in range(len(data)):
-        cx = cxs.pop()
-        if cx[0] < midp[0]:
-            left.append(cx)
-        else:
-            right.append(cx)
-    quads = [[], [], [], []] #LU, LD, RU, RD
-    for i, dir_list in enumerate([left, right]):
-        for k in range(len(dir_list)):
-            _, y, j = dir_list.pop()
-            b_dir = 2 * i
-            if y < midp[1]:
-                quads[b_dir].append(data[j])
-            else:
-                quads[b_dir + 1].append(data[j])
-    bounds_list = [
-        (bounds[0], midp[1], midp[0], bounds[3]),
-        (bounds[0], bounds[1], midp[0], midp[1]),
-        (midp[0], midp[1], bounds[2], bounds[3]),
-        (midp[0], bounds[1], bounds[2], midp[1])
-    ]
-    return [
-        (quads[i], bounds_list[i], path + ["LU", "LD", "RU", "RD"][i], bounds, midp)
-        for i in range(4)
-    ]
-
 def debug_harvest_parts(partition_tree)->list:
     if isinstance(partition_tree, list):
         result = []
@@ -266,35 +178,6 @@ def path_tree_decompose(partition_tree:list)->dict:
         sizes[longth].append(p)
     return sizes
 
-# def path_tree_recompose(sizes:dict)->list:
-#     parts = [p for k in sizes.values() for p in k]
-#     parts.sort(key=lambda x: x[2])
-#     part_tree = []
-#     part_map = {}
-#     def place(part, path, tree:list, _map:dict):
-#         if len(path) == 0:
-#             tree.append(part)
-#             _map[path] = part
-#             return
-#         if path[0] not in _map:
-#             _map[path[0]] = {}
-#             tree.append([path[0], []])
-#         tree_next_ind = -1
-#         for i, t in enumerate(tree):
-#             if t[0] == path[0]:
-#                 tree_next_ind = i
-#                 break
-#         place(part, path[1:], tree[tree_next_ind][1], _map[path[0]])
-#     for p in parts:
-#         place(p, p[2], part_tree, part_map)
-#     return part_tree
-        
-
-
-
-
-
-PARTITION_METHOD = geometric_partition_spatial
 
 def mp_collect_partitions(args:dict)->list[list, tuple, str, tuple, tuple]:
     is_child = mp_is_child()
@@ -390,73 +273,6 @@ def collect_step_mp(parts)->list[list, tuple, str]:
         # print(parts)
         # print(f"Parts: {[(len(p[0]), p[2]) for p in parts]}")
         raise e
-    
-def mp_partition_subdivide(args:dict)->list[list, tuple, str, tuple, tuple]:
-    is_child = mp_is_child()
-    if is_child:
-        mp_process_start(data)
-    part0 = args["part0"]
-    total_data = part0[0]
-    total_bounds = part0[1]
-    path = part0[2]
-    partition_size = args["partition_size"]
-    if len(total_data) > partition_size:
-        parts = PARTITION_METHOD(total_data, partition_size, total_bounds, path)
-    else:
-        parts = [part0]
-    if is_child:
-        mp_process_done(data, len(parts))
-        mp_process_items(data, len(total_data))
-        mp_process_finish(data)
-    return parts
-    
-def partition_step_mp(parts:list, partition_size:int)->list[list, tuple, str]:
-    start_len = len(parts)
-    if all(len(p[0]) <= partition_size for p in parts):
-        return parts
-    if start_len < 4 or True:
-        results = [mp_partition_subdivide({"part0": p, "partition_size": partition_size}) for p in parts]
-        results = [r for rs in results for r in rs]
-        final_len = len(results)
-        assert final_len > start_len, f"Final length is not greater than start length: {final_len} <= {start_len}"
-        return results
-    try:
-        initdata = get_shared_vars_mp()
-        args = [{"part0": p, "partition_size": partition_size} for p in parts]
-        with mp.Pool(mp.cpu_count(), mp_init_shared_mem_generic, (initdata,)) as pool:
-            results = pool.map(mp_partition_subdivide, args)
-        #results are a list of pairs, need to flatten
-        results = [r for rs in results for r in rs]
-        final_len = len(results)
-        assert final_len > start_len, f"Final length is not greater than start length: {final_len} <= {start_len}"
-        return results
-    except KeyboardInterrupt:
-        print("Keyboard interrupt")
-        raise KeyboardInterrupt
-    except Exception as e:
-        print("Error in pool.map")
-        raise e
-
-    
-
-def mp_full_partition_0(geoms:list, partition_size:int, bounds:tuple, profile_dir:Path):
-    print("Beginning full partition with method 0")
-    # profile0 = cProfile.Profile()
-    # profile0.enable()
-    parts = PARTITION_METHOD(geoms, partition_size, bounds)
-    # profile0.disable()
-    # profile0.dump_stats(profile_dir / "heavy_union_0.prof")
-    _i = 2
-    # profile1 = cProfile.Profile()
-    # profile1.enable()
-    while not all(len(p[0]) <= partition_size for p in parts):
-        _parts = partition_step_mp(parts, partition_size)
-        parts = _parts
-        _i *= 2
-    # profile1.disable()
-    # profile1.dump_stats(profile_dir / "heavy_union_1.prof")
-    # print(f"Collecting {len(parts)} partitions")
-    return parts
 
 def mp_full_partition_1(geoms:list, partition_size:int, bounds:tuple, profile_dir:Path):
     #alternate method, avoid calling centroid on geometries more than once
@@ -475,22 +291,6 @@ def mp_full_partition_1(geoms:list, partition_size:int, bounds:tuple, profile_di
         assert bounds[2] >= x1, f"Bounds are not valid: {bounds[2]} >= {x1}"
         assert bounds[3] >= y1, f"Bounds are not valid: {bounds[3]} >= {y1}"
     cxs = [(g.centroid.x, g.centroid.y, i) for i, g in enumerate(geoms)]
-    # midp = ((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2)
-    # quads = [[], [], [], []] #LU, LD, RU, RD
-    # quad0_time = time.time()
-    # quads[0] = [cx for cx in cxs if cx[0] < midp[0] and cx[1] > midp[1]] #LU
-    # print(f"Quad 0 took {time.time() - quad0_time} seconds")
-    # quads[1] = [cx for cx in cxs if cx[0] < midp[0] and cx[1] < midp[1]] #LD
-    # quads[2] = [cx for cx in cxs if cx[0] > midp[0] and cx[1] > midp[1]] #RU
-    # quads[3] = [cx for cx in cxs if cx[0] > midp[0] and cx[1] < midp[1]] #RD
-    # del cxs
-    # bounds_list = [
-    #     (bounds[0], midp[1], midp[0], bounds[3]),
-    #     (bounds[0], bounds[1], midp[0], midp[1]),
-    #     (midp[0], midp[1], bounds[2], bounds[3]),
-    #     (midp[0], bounds[1], bounds[2], midp[1])
-    # ]
-    # paths = ["LU", "LD", "RU", "RD"]
     total_return = 0
     def recursor(quad, _bounds, path, depth=0):
         nonlocal total_return, partition_size
@@ -554,15 +354,61 @@ def mp_full_partition_1(geoms:list, partition_size:int, bounds:tuple, profile_di
             result.append(rs_)
         return result
     parts = recursor(cxs, bounds, "")
-    # profile0.disable()
-    # profile0.dump_stats(profile_dir / "heavy_union_0.prof")
-    # print(f"Collecting {len(parts)} partitions")
-    # print(f"Total return: {total_return}")
+    return parts
+
+def mp_full_partition_2(geoms:list, partition_size:int, bounds:tuple, profile_dir:Path):
+    #Previous method works by spatial partitioning, this one will return to the original method
+    # of partitioning by number of items
+    print("Beginning full partition with method 2")
+    cxs = [(g.centroid.x, g.centroid.y, i) for i, g in enumerate(geoms)]
+    def recursor(cxs, partition_size, bounds, path, depth=0):
+        if len(cxs) <= partition_size:
+            return [(cxs, bounds, path)]
+        mid = len(cxs) // 2
+        cxs.sort(key=lambda x: x[0])
+        midp = (cxs[mid][0], cxs[mid][1])
+        cxs_left = cxs[:mid]
+        cxs_right = cxs[mid:]
+        bounds_left = (bounds[0], bounds[1], midp[0], bounds[3])
+        bounds_right = (midp[0], bounds[1], bounds[2], bounds[3])
+        cxs_left.sort(key=lambda x: x[1])
+        mid = len(cxs_left) // 2
+        midp = (cxs_left[mid][0], cxs_left[mid][1])
+        cxs_left_down = cxs_left[:mid]
+        cxs_left_up = cxs_left[mid:]
+        bounds_left_down = (bounds_left[0], bounds[1], midp[0], midp[1])
+        bounds_left_up = (bounds_left[0], midp[1], midp[0], bounds[3])
+        cxs_right.sort(key=lambda x: x[1])
+        mid = len(cxs_right) // 2
+        midp = (cxs_right[mid][0], cxs_right[mid][1])
+        cxs_right_down = cxs_right[:mid]
+        cxs_right_up = cxs_right[mid:]
+        bounds_right_down = (bounds_right[0], bounds[1], midp[0], midp[1])
+        bounds_right_up = (bounds_right[0], midp[1], midp[0], bounds[3])
+        paths = ["LD", "LU", "RD", "RU"]
+        quads = [
+            (cxs_left_down, bounds_left_down, path + "LD"),
+            (cxs_left_up, bounds_left_up, path + "LU"),
+            (cxs_right_down, bounds_right_down, path + "RD"),
+            (cxs_right_up, bounds_right_up, path + "RU")
+        ]
+        result = []
+        for i, quad in enumerate(quads):
+            rs = recursor(quad[0], partition_size, quad[1], quad[2], depth + 1)
+            result.extend(rs)
+        return result
+    parts = recursor(cxs, partition_size, bounds, "")
+    for i, part in enumerate(parts):
+        parts[i] = ([geoms[cx[2]] for cx in part[0]], part[1], part[2])
+
     return parts
 
 
 
-FULL_PARTITION_METHOD = mp_full_partition_1
+
+
+
+FULL_PARTITION_METHOD = mp_full_partition_2
 
 
 
@@ -591,18 +437,23 @@ def heavy_union(
             assert bounds[2] >= x1, f"Bounds are not valid: {bounds[2]} >= {x1}"
             assert bounds[3] >= y1, f"Bounds are not valid: {bounds[3]} >= {y1}"
         print(f"Got bounds in {time.time() - bound_time} seconds")
+        part_time = time.time()
         part_tree = FULL_PARTITION_METHOD(geoms, partition_size, bounds, profile_dir)
         # parts = debug_harvest_parts(part_tree)
         sizes = path_tree_decompose(part_tree)
+        num_parts = sum([len(v) for v in sizes.values()])
         longest = max(sizes.keys())
         parts = sizes[longest]
         sizes.pop(longest)
+        print(f"Got {len(parts)} partitions in {time.time() - part_time} seconds")
         # print(f"Got {len(parts)} partitions in group {longest}")
         # print(f"Lens: {[len(p[0]) for p in parts]}")
         _i = len(parts)
         _j = 0
         # print(f"Collecting {len(parts)} partitions")
+        collect_time = time.time()
         while len(parts) > 1:
+            step_time = time.time()
             _parts = collect_step_mp(parts)
             pathlen = len(_parts[0][2])
             if pathlen not in sizes:
@@ -617,6 +468,8 @@ def heavy_union(
             _i = len(parts)
             # print(f"Got {len(parts)} partitions in group {longest}")
             _j += 1
+            print(f"Group {_j} took {time.time()-step_time} seconds")
+        print(f"Collected {num_parts} partitions in {time.time() - collect_time} seconds")
         print(f"Finalizing")
         return parts[0][0]
     else:
@@ -697,7 +550,7 @@ if __name__ == '__main__':
             print(f"Got {len(all_wbs)} wbids in {time.time() - start_time} seconds")
             start_time = time.time()
             vpus = vpu_list()
-            mid = min(len(vpus), 3 * len(vpus) // 2)
+            mid = min(len(vpus), 3 * len(vpus) // 2)#, 1)
             half = vpus[:mid]
             half_wbid_groups = [get_vpu_wbids(v) for v in half]
             half_wbids = [wb for wbgroup in half_wbid_groups for wb in wbgroup if wb in all_wbs]

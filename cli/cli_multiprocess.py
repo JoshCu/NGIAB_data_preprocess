@@ -408,7 +408,7 @@ class WorkerManager:
                         self.tasks_done += 1
                         worker.reset()
                 if self.tasks_done % 10 == 0 and self.tasks_done > last_done:
-                    print(f"Tasks done: {self.tasks_done}/{self.task_count}")
+                    # print(f"Tasks done: {self.tasks_done}/{self.task_count}")
                     last_done = self.tasks_done
                 time.sleep(0.1)
                 _i += 1
@@ -420,7 +420,7 @@ class WorkerManager:
                 #     print(f"Task return: {len(self.task_return)}/{self.task_count}")
                 #     for k, v in self.task_data.items():
                 #         print(f"Task {k}: Taken by worker {v[0]}, status {status['worker_status'][v[0]]['state']}")
-            print(f"Tasks done: {self.tasks_done}/{self.task_count}")
+            # print(f"Tasks done: {self.tasks_done}/{self.task_count}")
         except Exception as e:
             print(f"Error in distributing tasks: {e}")
             self.terminate()
