@@ -29,150 +29,15 @@ from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString,
 from shapely.ops import unary_union
 from shapely import Geometry
 
-## Profiling
-import tracemalloc
-import linecache
-from resource import getrusage, RUSAGE_SELF, RUSAGE_CHILDREN
-from datetime import datetime
-from queue import Queue, Empty
-import psutil
-import cProfile
-
-def tracemalloc_peek(snapshot, key_type='lineno', limit=3):
-    top_stats = snapshot.statistics(key_type)
-    print(f"Top {limit} lines")
-    for index, stat in enumerate(top_stats[:limit], 1):
-        frame = stat.traceback[0]
-        print(f"#{index}: {frame.filename}:{frame.lineno} {stat.size/1024:.1f} KiB")
-        line = linecache.getline(frame.filename, frame.lineno).strip()
-        if line:
-            print(f"    {line}")
-    other = top_stats[limit:]
-    if other:
-        size = sum(stat.size for stat in other)
-        print(f"{len(other)} other: {size/1024:.1f} KiB")
-    total = sum(stat.size for stat in top_stats)
-    print(f"Total allocated size: {total/1024:.1f} KiB")
 
 
-#Child process to monitor the memory usage of both the main process and its children
-def memory_monitor(command_queue: Queue, poll_interval=1, min_interval=10):
-    r = "\x1b[0m"
-    c_ = lambda r,g,b: f"\x1b[38;2;{r};{g};{b}m"
-    memstr = lambda s: f"{c_(155, 155, 0)}{s}{r}"
-    mprint = lambda *s: print(*(memstr(x) for x in s if isinstance(x, str)))
-    monitor_start = time.time()
-    parent = mp.parent_process()
-    if parent is None:
-        mprint("Memory monitor is not a child process")
-        return
-    ps_parent = psutil.Process(parent.pid)
-    monitor_procs = [ps_parent]
-
-    usage_stats = {} #pid -> (rss, vms)
-    usage_stats[parent.pid] = (0, 0)
-    def update_usage_stats(proc:psutil.Process, maxs:tuple)->tuple:
-        try:
-            mem_info = proc.memory_info()
-            return (max(mem_info.rss, maxs[0]), max(mem_info.vms, maxs[1]))
-        except psutil.NoSuchProcess:
-            raise Exception("Process no longer exists")
-    def update_usage_stats_all(procs:list, stats:dict):
-        for i, p in enumerate(procs):
-            try:
-                stats[p.pid] = update_usage_stats(p, stats[p.pid])
-            except Exception as e:
-                if "no longer exists" in str(e):
-                    mprint(f"Process {p.pid} no longer exists")
-                    del procs[i]
-                else:
-                    mprint(f"Error updating stats for {p.pid}: {e}")
-                    raise e
-    def get_summary_stats(stats:dict)->tuple:
-        rss = sum([v[0] for v in stats.values()])
-        vms = sum([v[1] for v in stats.values()])
-        return rss, vms
-    def update_children(proc:psutil.Process, procs:list, stats:dict):
-        try:
-            children = proc.children()
-            for c in children:
-                if c.pid not in stats:
-                    procs.append(c)
-                    stats[c.pid] = (0, 0)
-        except psutil.NoSuchProcess:
-            raise Exception("Process no longer exists")
-        
-    last_max = (0, 0)
-    is_gt = lambda x, y: x[0] > y[0] or x[1] > y[1]
-    last_print = time.time()
-    snapshot = None
-    # tracemalloc.start()
-    while True:
-        try:
-            command = command_queue.get(timeout=poll_interval)
-            if command == "STOP":
-                mprint("Stopping memory monitor")
-                break
-        except Empty:
-            if not ps_parent.is_running():
-                mprint("Parent process is no longer running")
-                break
-            # Update usage
-            update_children(ps_parent, monitor_procs, usage_stats)
-            update_usage_stats_all(monitor_procs, usage_stats)
-            # Check if usage has increased
-            _new_max = get_summary_stats(usage_stats)
-            cond_gt = is_gt(_new_max, last_max)
-            cond_time = time.time() - last_print > min_interval
-            if cond_gt:
-                last_max = _new_max
-                # snapshot = tracemalloc.take_snapshot()
-            if cond_gt or cond_time:
-                rss, vms = last_max
-                mprint(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                mprint(f"Memory usage: RSS: {rss/1024/1024:.2f} MB, VMS: {vms/1024/1024:.2f} MB")
-                mprint(f"Duration: {time.time() - monitor_start:.2f} seconds")
-                # if snapshot is not None:
-                #     tracemalloc_peek(snapshot)
-                last_print = time.time()
-    # tracemalloc.stop()
-    mprint("Memory monitor stopped")
-    mprint(f"Duration: {time.time() - monitor_start:.2f} seconds")
-    mprint(f"Full stats: {usage_stats}")
-    for p in monitor_procs:
-        if parent.pid == p.pid:
-            continue
-        try:
-            p.terminate()
-        except Exception as e:
-            mprint(f"Error terminating process {p.pid}: {e}")
-    
-
-            
 
 
         
 
 
 
-class MemoryMonitor:
-    def __init__(self, poll_interval=1):
-        self.poll_interval = poll_interval
-        self.command_queue = mp.Queue()
-        self.process = mp.Process(target=memory_monitor, args=(self.command_queue, self.poll_interval))
-        self.process.start()
 
-    def stop(self):
-        print("Stopping memory monitor")
-        self.command_queue.put("STOP")
-        self.process.join()
-
-    def __enter__(self):
-        print("Starting memory monitor")
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.stop()
 
 ##Intra-package imports
 #Facilitate in-file testing
@@ -189,6 +54,9 @@ if __name__ == '__main__' or parent_module.__name__ == '__main__':
     import data_processing.subset as subset
     from cli.cli_wbid_utils import *
     from cli.cli_vpus import *
+    from cli.cli_debug_utils import MemoryMonitor
+    from cli.cli_debug_utils import debug_geoplot_geom
+    from cli.cli_multiprocess import *
 else:
     from data_processing.file_paths import file_paths
     from data_processing import graph_utils
@@ -196,13 +64,18 @@ else:
     from data_processing import subset
     from cli_wbid_utils import *
     from cli_vpus import *
+    MemoryMonitor = int
+    debug_geoplot_geom = lambda *args, **kwargs: None
+    from cli_multiprocess import *
 
 
 ONCE = (True,)
 RENDER = False
+WORKERMANAGER = None
 
 
 def mp_is_child():
+    return False
     return mp.current_process().name != 'MainProcess'
 
 def mp_init_shared_mem_generic(_data):
@@ -256,92 +129,6 @@ def geom_get_bounds(geoms: list)->tuple:
         max([g.bounds[3] for g in geoms])
     )
 
-def debug_render_partitions(postfix:str, parts:list, bounds:tuple):
-    if not RENDER:
-        return
-    fig, ax = plt.subplots()
-    #ensure shapes are visible
-    f_width = bounds[2] - bounds[0]
-    f_height = bounds[3] - bounds[1]
-    # print(f"Bounds: {bounds}")
-    # print(f"Width: {f_width}, Height: {f_height}")
-    # xmin = bounds[0] - f_width * 0.1
-    # xmax = bounds[2] + f_width * 0.1
-    # ymin = bounds[1] - f_height * 0.1
-    # ymax = bounds[3] + f_height * 0.1
-    scale_factor = 1 / max(f_width, f_height)
-    scaled_x = lambda x: (x - bounds[0]) / f_width
-    scaled_y = lambda y: (y - bounds[1]) / f_height
-
-    for p in parts:
-        b = p[1]
-        # print(f"Adding rectangle: {b}")
-        assert b[0] < b[2]
-        assert b[1] < b[3]
-        xmin, ymin, xmax, ymax = b
-        xmin, ymin, xmax, ymax = scaled_x(xmin), scaled_y(ymin), scaled_x(xmax), scaled_y(ymax)
-        width = xmax - xmin
-        height = ymax - ymin
-        # print(f"Adding rectangle: {xmin}, {ymin}, {width}, {height}")
-        xoffset = 0
-        yoffset = 0
-        # xoffset = width * 0.05
-        # yoffset = height * 0.05
-        # width -= xoffset
-        # height -= yoffset
-        #fill with random color
-        face_color = (random.random(), random.random(), random.random(), 0.2)
-        edge_color = (0, 0, 0, 0.5)
-        rect = plt.Rectangle((
-            xmin + xoffset, ymin + yoffset
-        ), width, height, facecolor=face_color, edgecolor=edge_color, alpha=0.5)
-        ax.add_patch(rect)
-    plt.savefig(file_paths.root_output_dir() / f"partition_{postfix}.png")
-
-def debug_create_fig_grid(num:int)->tuple:
-    if not RENDER:
-        return None, None
-    cols = num
-    rows = 1
-    if num > 4 and 4**2 >= num:
-        #Fill out the 4x4 grid
-        cols = 4
-        rows = math.ceil(num / 4)
-    elif num > 4**2:
-        #Try to keep roughly square
-        cols = math.ceil(math.sqrt(num))
-        rows = math.ceil(num / cols)
-    fig, axs = plt.subplots(rows, cols)
-    return fig, axs
-
-def debug_render_subplot(axs, ind, parts:list, bounds:tuple, postfix:str=""):
-    if postfix=="":
-        postfix = f"_{ind}"
-    if not RENDER:
-        return
-    ax = axs[ind]
-    ax.set_xlim(bounds[0], bounds[2])
-    ax.set_ylim(bounds[1], bounds[3])
-    ax.set_aspect('equal', adjustable='box')
-    for p in parts:
-        b = p[1]
-        assert b[0] < b[2]
-        assert b[1] < b[3]
-        face_color = (random.random(), random.random(), random.random(), 0.2)
-        edge_color = (0, 0, 0, 0.5)
-        rect = plt.Rectangle(b[:2], b[2] - b[0], b[3] - b[1], facecolor=face_color, edgecolor=edge_color, alpha=0.5)
-        ax.add_patch(rect)
-    ax.set_title(postfix)
-    return ax
-
-def debug_process_and_show_fig(fig, axs, postfix:str):
-    if not RENDER:
-        return
-    for ax in axs:
-        ax.axis('off')
-    plt.savefig(file_paths.root_output_dir() / f"partition_{postfix}.png")
-    # plt.show()
-    
 
 
 def data_bisect(data: list, bounds: tuple, path="")-> list[list, tuple, str, tuple, tuple]:
@@ -479,28 +266,28 @@ def path_tree_decompose(partition_tree:list)->dict:
         sizes[longth].append(p)
     return sizes
 
-def path_tree_recompose(sizes:dict)->list:
-    parts = [p for k in sizes.values() for p in k]
-    parts.sort(key=lambda x: x[2])
-    part_tree = []
-    part_map = {}
-    def place(part, path, tree:list, _map:dict):
-        if len(path) == 0:
-            tree.append(part)
-            _map[path] = part
-            return
-        if path[0] not in _map:
-            _map[path[0]] = {}
-            tree.append([path[0], []])
-        tree_next_ind = -1
-        for i, t in enumerate(tree):
-            if t[0] == path[0]:
-                tree_next_ind = i
-                break
-        place(part, path[1:], tree[tree_next_ind][1], _map[path[0]])
-    for p in parts:
-        place(p, p[2], part_tree, part_map)
-    return part_tree
+# def path_tree_recompose(sizes:dict)->list:
+#     parts = [p for k in sizes.values() for p in k]
+#     parts.sort(key=lambda x: x[2])
+#     part_tree = []
+#     part_map = {}
+#     def place(part, path, tree:list, _map:dict):
+#         if len(path) == 0:
+#             tree.append(part)
+#             _map[path] = part
+#             return
+#         if path[0] not in _map:
+#             _map[path[0]] = {}
+#             tree.append([path[0], []])
+#         tree_next_ind = -1
+#         for i, t in enumerate(tree):
+#             if t[0] == path[0]:
+#                 tree_next_ind = i
+#                 break
+#         place(part, path[1:], tree[tree_next_ind][1], _map[path[0]])
+#     for p in parts:
+#         place(p, p[2], part_tree, part_map)
+#     return part_tree
         
 
 
@@ -560,44 +347,6 @@ def collect_step_mp(parts)->list[list, tuple, str]:
         # print(parts)
         # print(f"Parts: {[(len(p[0]), p[2]) for p in parts]}")
         raise e
-    # args = [{"part0": parts[i], "part1": parts[i+1]} for i in range(0, len(parts), 2)]
-    # path_length_dict = {}
-    # for i, p in enumerate(parts):
-    #     path = p[2]
-    #     if len(path) not in path_length_dict:
-    #         path_length_dict[len(path)] = []
-    #     path_length_dict[len(path)].append(i)
-    #Sort path dict such that alphabetical order is preserved
-    # sortby = lambda x: parts[x][2]
-    # for k in path_length_dict.keys():
-    #     path_length_dict[k].sort(key=sortby)
-    # args = [] #Pair up partitions with the same path length
-    # skips = []
-    # for path_len, indices in path_length_dict.items():
-    #     num = len(indices)
-    #     for i in range(0, num if num % 2 == 0 else num - 1, 2):
-    #         p1 = parts[indices[i]]
-    #         p2 = parts[indices[i+1]]
-    #         #must be same up to second to last element
-    #         if p1[2][:path_len - 1] != p2[2][:path_len - 1]:
-    #             # print(f"Paths are not the same: {p1[2]} and {p2[2]}")
-    #             skips.append(p1)
-    #             skips.append(p2)
-    #             continue
-    #         args.append({"part0": p1, "part1": p2})
-    #     if num % 2 == 1:
-    #         skips.append(parts[indices[-1]])
-    # if len(args) == 0:
-    #     print("No args")
-    #     print(len(parts))
-    #     # print([len(p) for p in parts])
-    #     # print(parts)
-    #     # print(f"Parts: {[(len(p[0]), p[2]) for p in parts]}")
-    #     raise Exception("No args")
-
-    #unfold part tree
-    # if len(parts) == 2 and isinstance(parts[0], list):
-    #     parts = debug_harvest_parts(parts)
 
     args = [{"part0": parts[i], "part1": parts[i+1]} for i in range(0, len(parts) - start_len%2, 2)]
     skips = [parts[-1]] if len(parts) % 2 == 1 else []
@@ -606,8 +355,19 @@ def collect_step_mp(parts)->list[list, tuple, str]:
     print(f"Beginning multiprocessing with {len(args)} pairs")
     try:
         initdata = get_shared_vars_mp()
-        with mp.Pool(mp.cpu_count(), mp_init_shared_mem_generic, (initdata,)) as pool:
-            results = pool.map(mp_collect_partitions, args)
+        # with mp.Pool(mp.cpu_count(), mp_init_shared_mem_generic, (initdata,)) as pool:
+        #     results = pool.map(mp_collect_partitions, args)
+        results = []
+        for i in range(0, len(args), mp.cpu_count()):
+            WORKERMANAGER.reset()
+            for j in range(mp.cpu_count()):
+                k = i + j
+                if k >= len(args):
+                    break
+                arg = args[k]
+                WORKERMANAGER.send_task(mp_collect_partitions, arg)
+            WORKERMANAGER.distribute()
+            results.extend(WORKERMANAGER.task_return.values())
         results = [r for rs in results for r in rs]
         if len(skips) > 0 and len(results) > 0:
             final = results[-1]
@@ -681,28 +441,28 @@ def partition_step_mp(parts:list, partition_size:int)->list[list, tuple, str]:
 
 def mp_full_partition_0(geoms:list, partition_size:int, bounds:tuple, profile_dir:Path):
     print("Beginning full partition with method 0")
-    profile0 = cProfile.Profile()
-    profile0.enable()
+    # profile0 = cProfile.Profile()
+    # profile0.enable()
     parts = PARTITION_METHOD(geoms, partition_size, bounds)
-    profile0.disable()
-    profile0.dump_stats(profile_dir / "heavy_union_0.prof")
+    # profile0.disable()
+    # profile0.dump_stats(profile_dir / "heavy_union_0.prof")
     _i = 2
-    profile1 = cProfile.Profile()
-    profile1.enable()
+    # profile1 = cProfile.Profile()
+    # profile1.enable()
     while not all(len(p[0]) <= partition_size for p in parts):
         _parts = partition_step_mp(parts, partition_size)
         parts = _parts
         _i *= 2
-    profile1.disable()
-    profile1.dump_stats(profile_dir / "heavy_union_1.prof")
-    print(f"Collecting {len(parts)} partitions")
+    # profile1.disable()
+    # profile1.dump_stats(profile_dir / "heavy_union_1.prof")
+    # print(f"Collecting {len(parts)} partitions")
     return parts
 
 def mp_full_partition_1(geoms:list, partition_size:int, bounds:tuple, profile_dir:Path):
     #alternate method, avoid calling centroid on geometries more than once
     print("Beginning full partition with method 1")
-    profile0 = cProfile.Profile()
-    profile0.enable()
+    # profile0 = cProfile.Profile()
+    # profile0.enable()
     for g in geoms:
         x, y = g.centroid.x, g.centroid.y
         x0, y0, x1, y1 = g.bounds
@@ -743,20 +503,9 @@ def mp_full_partition_1(geoms:list, partition_size:int, bounds:tuple, profile_di
         if len(quad) <= partition_size:
             total_return += 1
             return [([geoms[cx[2]] for cx in quad], _bounds, path)]
-        # do_prof = depth!=0 and depth % 3 == 0 and len(quad) > partition_size * 5
-        # if do_prof:
-        #     profile = cProfile.Profile()
-        #     profile.enable()
-        #     ptime = time.time()
-            # print(f"Profiling {path} at depth {depth} and time {datetime.now()}")
         midp = ((_bounds[0] + _bounds[2]) / 2, (_bounds[1] + _bounds[3]) / 2)
         quads = [[[], []], [[], []]]
-        # quads[0][0] = [cx for cx in quad if cx[0] <= midp[0] and cx[1] > midp[1]] #LU
-        # quads[0][1] = [cx for cx in quad if cx[0] <= midp[0] and cx[1] <= midp[1]] #LD
-        # quads[1][0] = [cx for cx in quad if cx[0] > midp[0] and cx[1] > midp[1]] #RU
-        # quads[1][1] = [cx for cx in quad if cx[0] > midp[0] and cx[1] <= midp[1]] #RD
-        # lens = [len(q) for q in quads]
-        # del quad
+
         bounds_list = [
             (_bounds[0], midp[1], midp[0], _bounds[3]), #LU
             (_bounds[0], _bounds[1], midp[0], midp[1]), #LD
@@ -803,18 +552,12 @@ def mp_full_partition_1(geoms:list, partition_size:int, bounds:tuple, profile_di
                         raise Exception(e)
                 rs_.append(recursor(_quad, bounds_list[2*i + j], paths[2*i + j], depth + 1))
             result.append(rs_)
-        # if do_prof:
-        #     profile.disable()
-        #     if time.time() - ptime > 1:
-        #         profile.dump_stats(profile_dir / f"heavy_union_{path}_{depth}.prof")
-        #         print(f"Profiling {path} at depth {depth} and time {datetime.now()} took {time.time() - ptime} seconds")
-            # profile.dump_stats(profile_dir / f"heavy_union_{path}_{depth}.prof")
         return result
     parts = recursor(cxs, bounds, "")
-    profile0.disable()
-    profile0.dump_stats(profile_dir / "heavy_union_0.prof")
-    print(f"Collecting {len(parts)} partitions")
-    print(f"Total return: {total_return}")
+    # profile0.disable()
+    # profile0.dump_stats(profile_dir / "heavy_union_0.prof")
+    # print(f"Collecting {len(parts)} partitions")
+    # print(f"Total return: {total_return}")
     return parts
 
 
@@ -854,43 +597,33 @@ def heavy_union(
         longest = max(sizes.keys())
         parts = sizes[longest]
         sizes.pop(longest)
-        print(f"Got {len(parts)} partitions in group {longest}")
+        # print(f"Got {len(parts)} partitions in group {longest}")
         # print(f"Lens: {[len(p[0]) for p in parts]}")
         _i = len(parts)
-        if RENDER:
-            # bounds = geom_get_bounds(geoms)
-            _num = int(math.log2(_i))
-            fig, axs = debug_create_fig_grid(_num)
-            axs = axs.flatten()
         _j = 0
         # print(f"Collecting {len(parts)} partitions")
         while len(parts) > 1:
-            if RENDER:
-                bnds = [(0, p[1]) for p in parts]
-                debug_render_subplot(axs, _j, bnds, bounds, f"step_{_j}")
-                debug_render_partitions(f"step_{_j}", parts, bounds)
             _parts = collect_step_mp(parts)
             pathlen = len(_parts[0][2])
             if pathlen not in sizes:
                 sizes[pathlen] = []
-            print(f"Got {len(_parts)} partitions to add to group {pathlen}")
+            # print(f"Got {len(_parts)} partitions to add to group {pathlen}")
             sizes[pathlen].extend(_parts)
             lens_dict = {k: len(v) for k, v in sizes.items()}
-            print(f"Sizes lens now: {lens_dict}")
+            # print(f"Sizes lens now: {lens_dict}")
             longest = max(sizes.keys())
             parts = sizes[longest]
             sizes.pop(longest)
             _i = len(parts)
-            print(f"Got {len(parts)} partitions in group {longest}")
+            # print(f"Got {len(parts)} partitions in group {longest}")
             _j += 1
         print(f"Finalizing")
-        if RENDER:
-            debug_process_and_show_fig(fig, axs, "final")
         return parts[0][0]
     else:
         return unary_union(geoms)
 
-        
+WORKERMANAGER = WorkerManager("Primary", file_paths.root_output_dir())
+WORKERMANAGER.start()
 
 if __name__ == '__main__':
     do_partition = False
@@ -964,7 +697,7 @@ if __name__ == '__main__':
             print(f"Got {len(all_wbs)} wbids in {time.time() - start_time} seconds")
             start_time = time.time()
             vpus = vpu_list()
-            mid = len(vpus)
+            mid = min(len(vpus), 3 * len(vpus) // 2)
             half = vpus[:mid]
             half_wbid_groups = [get_vpu_wbids(v) for v in half]
             half_wbids = [wb for wbgroup in half_wbid_groups for wb in wbgroup if wb in all_wbs]
@@ -975,6 +708,7 @@ if __name__ == '__main__':
             start_time = time.time()
             merged_geom = heavy_union([geoms_dict[w] for w in half_wbids], partition_size=500)
             print(f"Union took {time.time() - start_time} seconds")
+            debug_geoplot_geom(merged_geom, bounds=geom_get_bounds(merged_geom))
 
 
 
