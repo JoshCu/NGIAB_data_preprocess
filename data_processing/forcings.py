@@ -69,14 +69,14 @@ def compute_store(stores: xr.Dataset, cached_nc_path: Path) -> xr.Dataset:
 
 
 @numba.njit(parallel=True)
-def compute_weighted_mean(data_array, cell_ids, weights):
-    mean_at_timestep = np.zeros(data_array.shape[0])
+def compute_weighted_sum(data_array, cell_ids, weights):
+    sum_at_timestep = np.zeros(data_array.shape[0])
     for time_step in numba.prange(data_array.shape[0]):
         weighted_total = 0.0
         for i in range(cell_ids.shape[0]):
             weighted_total += data_array[time_step][cell_ids[i]] * weights[i]
-        mean_at_timestep[time_step] = weighted_total
-    return mean_at_timestep
+        sum_at_timestep[time_step] = weighted_total
+    return sum_at_timestep
 
 
 def get_cell_weights(raster, gdf):
@@ -131,7 +131,7 @@ def compute_zonal_stats(
             cell_ids = catchments.loc[catchment]["cell_id"]
             weights = catchments.loc[catchment]["coverage"]
 
-            mean_at_timesteps = compute_weighted_mean(raster, cell_ids, weights)
+            mean_at_timesteps = compute_weighted_sum(raster, cell_ids, weights)
 
             temp_da = xr.DataArray(
                 mean_at_timesteps,
