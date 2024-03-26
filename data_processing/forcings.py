@@ -108,10 +108,9 @@ def compute_zonal_stats(
 
     catchments = pd.concat(catchments)
 
-    logger.info("Adding APCP_SURFACE to dataset")
     # adding APCP_SURFACE to the dataset, this is a hack and not a real APCP_SURFACE
     merged_data["APCP_surface"] = (merged_data["RAINRATE"] * 3600 * 1000) / 0.998
-    logger.info("Added APCP_SURFACE to dataset")
+
     variables = [
         "LWDOWN",
         "PSFC",
@@ -155,6 +154,21 @@ def compute_zonal_stats(
     for file in output_folder.glob("*.csv"):
         file.unlink()
 
+    final_ds = final_ds.rename_vars(
+        {
+            "LWDOWN": "DLWRF_surface",
+            "PSFC": "PRES_surface",
+            "Q2D": "SPFH_2maboveground",
+            "RAINRATE": "precip_rate",
+            "SWDOWN": "DSWRF_surface",
+            "T2D": "TMP_2maboveground",
+            "U2D": "UGRD_10maboveground",
+            "V2D": "VGRD_10maboveground",
+            "APCP_surface": "APCP_surface",
+        }
+    )
+
+    logger.info("Saving to disk")
     # Save to disk
     delayed_saves = []
     for catchment in final_ds.catchment.values:
@@ -167,7 +181,9 @@ def compute_zonal_stats(
 
     dask.compute(*delayed_saves)
 
-    logger.info(f"Zonal stats computed in {time.time() - timer_start} seconds")
+    logger.info(
+        f"Forcing generation complete!\nZonal stats computed in {time.time() - timer_start} seconds"
+    )
 
 
 def setup_directories(wb_id: str) -> file_paths:
