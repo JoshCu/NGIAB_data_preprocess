@@ -89,16 +89,32 @@ def get_cell_weights(raster, gdf):
     return output.set_index("divide_id")
 
 
+def add_APCP_SURFACE_to_dataset(dataset: xr.Dataset) -> xr.Dataset:
+    dataset["APCP_surface"] = (dataset["RAINRATE"] * 3600 * 1000) / 0.998
+    return dataset
+
+
 def compute_zonal_stats(
     gdf: gpd.GeoDataFrame, merged_data: xr.Dataset, forcings_dir: Path
 ) -> None:
     logger.info("Computing zonal stats in parallel for all timesteps")
     timer_start = time.time()
-    catchments = get_cell_weights(
-        merged_data, gdf
-    )  # Assuming this returns a DataFrame or similar structure
+    catchments = get_cell_weights(merged_data, gdf)
 
-    variables = ["LWDOWN", "PSFC", "Q2D", "RAINRATE", "SWDOWN", "T2D", "U2D", "V2D"]
+    # adding APCP_SURFACE to the dataset, this is a hack and not a real APCP_SURFACE
+    merged_data["APCP_surface"] = (merged_data["RAINRATE"] * 3600 * 1000) / 0.998
+
+    variables = [
+        "LWDOWN",
+        "PSFC",
+        "Q2D",
+        "RAINRATE",
+        "SWDOWN",
+        "T2D",
+        "U2D",
+        "V2D",
+        "APCP_surface",
+    ]
 
     results = []
     for variable in variables:
@@ -138,7 +154,9 @@ def compute_zonal_stats(
     for catchment in final_ds.catchment.values:
         catchment_ds = final_ds.sel(catchment=catchment)
         csv_path = output_folder / f"{catchment}.csv"
-        delayed_save = dask.delayed(catchment_ds.to_dataframe().to_csv(csv_path))
+        delayed_save = dask.delayed(
+            catchment_ds.to_dataframe().drop(["catchment"], axis=1).to_csv(csv_path)
+        )
         delayed_saves.append(delayed_save)
 
     dask.compute(*delayed_saves)
