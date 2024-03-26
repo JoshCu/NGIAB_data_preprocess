@@ -20,6 +20,8 @@ from data_processing.file_paths import file_paths
 
 logger = logging.getLogger(__name__)
 
+dask.config.set({"array.chunk-size": "1024MiB"})
+
 
 @cache
 def open_s3_store(url: str) -> s3fs.S3Map:
@@ -62,7 +64,7 @@ def clip_dataset_to_bounds(
 def compute_store(stores: xr.Dataset, cached_nc_path: Path) -> xr.Dataset:
     if file_paths.dev_file().exists():
         stores.to_netcdf(cached_nc_path)
-    data = xr.open_dataset(cached_nc_path, chunks={})
+    data = xr.open_mfdataset(cached_nc_path, parallel=True)
     return data
 
 
@@ -78,9 +80,8 @@ def compute_weighted_mean(data_array, cell_ids, weights):
 
 
 def get_cell_weights(raster, gdf):
-    one_timestep = raster.isel(time=0)
     output = exact_extract(
-        one_timestep["LWDOWN"],
+        raster["LWDOWN"],
         gdf,
         ["cell_id", "coverage"],
         include_cols=["divide_id"],
@@ -99,11 +100,18 @@ def compute_zonal_stats(
 ) -> None:
     logger.info("Computing zonal stats in parallel for all timesteps")
     timer_start = time.time()
-    catchments = get_cell_weights(merged_data, gdf)
+    gfd_chunks = np.array_split(gdf, multiprocessing.cpu_count() - 1)
+    one_timestep = merged_data.isel(time=0).compute()
+    with multiprocessing.Pool() as pool:
+        args = [(one_timestep, gdf_chunk) for gdf_chunk in gfd_chunks]
+        catchments = pool.starmap(get_cell_weights, args)
 
+    catchments = pd.concat(catchments)
+
+    logger.info("Adding APCP_SURFACE to dataset")
     # adding APCP_SURFACE to the dataset, this is a hack and not a real APCP_SURFACE
     merged_data["APCP_surface"] = (merged_data["RAINRATE"] * 3600 * 1000) / 0.998
-
+    logger.info("Added APCP_SURFACE to dataset")
     variables = [
         "LWDOWN",
         "PSFC",
@@ -119,12 +127,10 @@ def compute_zonal_stats(
     results = []
     for variable in variables:
         variable_data = []
+        raster = merged_data[variable].data.reshape(merged_data[variable].shape[0], -1).compute()
         for catchment in catchments.index.unique():
             cell_ids = catchments.loc[catchment]["cell_id"]
             weights = catchments.loc[catchment]["coverage"]
-
-            # Flatten spatial dimensions for weighted mean calculation if necessary
-            raster = merged_data[variable].data.reshape(merged_data[variable].shape[0], -1)
 
             mean_at_timesteps = compute_weighted_mean(raster, cell_ids, weights)
 
@@ -185,23 +191,33 @@ def create_forcings(start_time: str, end_time: str, output_folder_name: str) -> 
     if type(end_time) == datetime:
         end_time = end_time.strftime("%Y-%m-%d %H:%M")
 
-    if not os.path.exists(forcing_paths.cached_nc_file()):
-        logger.info("No cached nc file found")
-        logger.info("Loading zarr stores, this may take a while.")
-        lazy_store = load_zarr_datasets()
-        logger.info("Got zarr stores")
+    if os.path.exists(forcing_paths.cached_nc_file()):
+        logger.info("found cached nc file")
+        # open the cached file and check that the time range is correct
+        cached_data = xr.open_mfdataset(forcing_paths.cached_nc_file(), parallel=True)
+        if cached_data.time[0].values <= np.datetime64(start_time) and cached_data.time[
+            -1
+        ].values >= np.datetime64(end_time):
+            logger.info("Time range is correct")
+            merged_data = cached_data
+            logger.info(f"Opened cached nc file: [{forcing_paths.cached_nc_file()}]")
+        else:
+            logger.info("Time range is incorrect")
+            os.remove(forcing_paths.cached_nc_file())
+            logger.info("Removed cached nc file")
 
-        clipped_store = clip_dataset_to_bounds(lazy_store, gdf.total_bounds, start_time, end_time)
-        logger.info("Clipped stores")
+            logger.info("Loading zarr stores, this may take a while.")
+            lazy_store = load_zarr_datasets()
+            logger.info("Got zarr stores")
 
-        merged_data = compute_store(clipped_store, forcing_paths.cached_nc_file())
-        logger.info("Computed store")
-    else:
-        merged_data = xr.open_dataset(forcing_paths.cached_nc_file())
-        logger.info("Opened cached nc file")
+            clipped_store = clip_dataset_to_bounds(
+                lazy_store, gdf.total_bounds, start_time, end_time
+            )
+            logger.info("Clipped stores")
 
-    # print(type(merged_data))
-    logger.info(f"Opened cached nc file: [{forcing_paths.cached_nc_file()}]")
+            merged_data = compute_store(clipped_store, forcing_paths.cached_nc_file())
+            logger.info("Computed store")
+
     logger.info("Computing zonal stats")
     compute_zonal_stats(gdf, merged_data, forcing_paths.forcings_dir())
 
