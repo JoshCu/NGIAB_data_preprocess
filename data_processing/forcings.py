@@ -107,7 +107,6 @@ def compute_zonal_stats(
         catchments = pool.starmap(get_cell_weights, args)
 
     catchments = pd.concat(catchments)
-    print(catchments)
 
     # adding APCP_SURFACE to the dataset, this is a hack and not a real APCP_SURFACE
     merged_data["APCP_surface"] = (merged_data["RAINRATE"] * 3600 * 1000) / 0.998
@@ -219,8 +218,11 @@ def create_forcings(start_time: str, end_time: str, output_folder_name: str) -> 
             -1
         ].values >= np.datetime64(end_time):
             logger.info("Time range is correct")
-            merged_data = cached_data
             logger.info(f"Opened cached nc file: [{forcing_paths.cached_nc_file()}]")
+            merged_data = clip_dataset_to_bounds(
+                cached_data, gdf.total_bounds, start_time, end_time
+            )
+            logger.info("Clipped stores")
         else:
             logger.info("Time range is incorrect")
             os.remove(forcing_paths.cached_nc_file())
