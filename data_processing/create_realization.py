@@ -6,9 +6,11 @@ import typing
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
-
+import multiprocessing
 import pandas
 import yaml
+from collections import defaultdict
+from math import ceil
 
 from data_processing.file_paths import file_paths
 
@@ -300,6 +302,42 @@ def create_cfe_realization(
     shutil.copy(paths.data_sources() / "awi_config.ini", base_dir)
 
 
+def create_partitions(paths: Path, num_partitions: int = None) -> None:
+    # open the nexus.geojson file
+    # get all the catchment to divide_id mappings
+    # group all the catchments by divide
+    # assign each group to a partition
+    # write the partition to a file
+    if num_partitions is None:
+        num_partitions = multiprocessing.cpu_count()
+
+    with open(paths.config_dir() / "catchments.geojson", "r") as f:
+        data = json.load(f)
+    nexus = defaultdict(list)
+    for feature in data["features"]:
+        nexus[feature["properties"]["toid"]].append(feature["properties"]["id"])
+
+    num_partitions = min(num_partitions, len(nexus))
+    partition_size = ceil(len(nexus) / num_partitions)
+    num_nexus = len(nexus)
+    nexus = list(nexus.items())
+    partitions = []
+    for i in range(0, num_nexus, partition_size):
+        part = {}
+        part["id"] = i // partition_size
+        part["cat-ids"] = []
+        part["nex-ids"] = []
+        part["remote-connections"] = []
+        for j in range(i, i + partition_size):
+            if j < num_nexus:
+                part["cat-ids"].extend(nexus[j][1])
+                part["nex-ids"].append(nexus[j][0])
+        partitions.append(part)
+
+    with open(paths.config_dir() / "partitions.json", "w") as f:
+        f.write(json.dumps({"partitions": partitions}))
+
+
 def create_cfe_wrapper(
     wb_id: str,
     start_time: datetime,
@@ -332,7 +370,7 @@ def create_cfe_wrapper(
         config_path=Path("/ngen/ngen/data/config/"),
         forcing_path=Path("/ngen/ngen/data/forcings/"),
     )
-
+    create_partitions(paths)
     paths.setup_run_folders()
 
 
