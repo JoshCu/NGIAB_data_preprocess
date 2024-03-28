@@ -18,3 +18,4 @@ dask
 black
 isort
 h5netcdf
+numba
