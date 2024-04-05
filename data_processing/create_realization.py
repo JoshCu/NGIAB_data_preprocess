@@ -6,9 +6,11 @@ import typing
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
-
+import multiprocessing
 import pandas
 import yaml
+from collections import defaultdict
+from math import ceil
 
 from data_processing.file_paths import file_paths
 
@@ -31,6 +33,7 @@ class GlobalRealization:
             dat["time"] = self.time
         if self.routing is not None:
             dat["routing"] = self.routing
+        dat["output_root"] = "/ngen/ngen/data/outputs/ngen"
 
         return json.dumps(dat, sort_keys=False, indent=4)
 
@@ -192,8 +195,11 @@ def parse_cfe_parameters(cfe_noahowp_attributes: pandas.DataFrame) -> typing.Dic
 
 
 def make_catchment_configs(base_dir: Path, catchment_configs: pandas.DataFrame) -> None:
+    cat_config_dir = base_dir / "cat_config"
+    cat_config_dir.mkdir(parents=True, exist_ok=True)
+
     for name, conf in catchment_configs.items():
-        with open(f"{base_dir}/{name}_config.ini", "w") as f:
+        with open(f"{cat_config_dir}/{name}_config.ini", "w") as f:
             for k, v in conf.items():
                 f.write(f"{k}={v}\n")
 
@@ -214,7 +220,7 @@ def create_cfe_realization(
     for key, val in catchment_configs.items():
         # wb_key = f"wb-{key.split('-')[1]}"
         config_name = f"{key}_config.ini"
-        config_path_ini = f"{config_path}/{config_name}"
+        config_path_ini = f"{config_path}/cat_config/{config_name}"
         forcing_file_path = f"{forcing_path}/by_catchment/{key}.csv"
 
         # CFE
@@ -282,22 +288,63 @@ def create_cfe_realization(
         f.write(realization.toJSON())
 
     with open(paths.template_troute_config(), "r") as file:
-        ngen = yaml.safe_load(file)  # Use safe_load for loading
+        troute = yaml.safe_load(file)  # Use safe_load for loading
 
     geo_file_path = f"/ngen/ngen/data/config/{wb_id}_subset.gpkg"
-    network_topology = ngen["network_topology_parameters"]
+    network_topology = troute["network_topology_parameters"]
     supernetwork_params = network_topology["supernetwork_parameters"]
 
     supernetwork_params["geo_file_path"] = geo_file_path
-    ngen["compute_parameters"]["restart_parameters"]["start_datetime"] = time["start_time"]
+    troute["compute_parameters"]["restart_parameters"]["start_datetime"] = time["start_time"]
     # TODO figure out what ngens doing with the timesteps.
-    ngen["compute_parameters"]["forcing_parameters"]["nts"] = time["nts"]
+    troute["compute_parameters"]["forcing_parameters"]["nts"] = time["nts"]
+    time_step_size = int(troute["compute_parameters"]["forcing_parameters"]["dt"])  # seconds
+    number_of_steps = time["nts"]
+    number_of_hourly_steps = number_of_steps * time_step_size / 3600
+    # not setting this will cause troute to output one netcdf file per timestep
+    troute["output_parameters"]["stream_output"]["stream_output_time"] = number_of_hourly_steps
 
     with open(base_dir / "ngen.yaml", "w") as file:
-        yaml.dump(ngen, file)
+        yaml.dump(troute, file)
 
     # copy the awi base config to the config directory
     shutil.copy(paths.data_sources() / "awi_config.ini", base_dir)
+
+
+def create_partitions(paths: Path, num_partitions: int = None) -> None:
+    # open the nexus.geojson file
+    # get all the catchment to divide_id mappings
+    # group all the catchments by divide
+    # assign each group to a partition
+    # write the partition to a file
+    if num_partitions is None:
+        num_partitions = multiprocessing.cpu_count()
+
+    with open(paths.config_dir() / "catchments.geojson", "r") as f:
+        data = json.load(f)
+    nexus = defaultdict(list)
+    for feature in data["features"]:
+        nexus[feature["properties"]["toid"]].append(feature["properties"]["id"])
+
+    num_partitions = min(num_partitions, len(nexus))
+    partition_size = ceil(len(nexus) / num_partitions)
+    num_nexus = len(nexus)
+    nexus = list(nexus.items())
+    partitions = []
+    for i in range(0, num_nexus, partition_size):
+        part = {}
+        part["id"] = i // partition_size
+        part["cat-ids"] = []
+        part["nex-ids"] = []
+        part["remote-connections"] = []
+        for j in range(i, i + partition_size):
+            if j < num_nexus:
+                part["cat-ids"].extend(nexus[j][1])
+                part["nex-ids"].append(nexus[j][0])
+        partitions.append(part)
+
+    with open(paths.config_dir() / "partitions.json", "w") as f:
+        f.write(json.dumps({"partitions": partitions}))
 
 
 def create_cfe_wrapper(
@@ -332,7 +379,7 @@ def create_cfe_wrapper(
         config_path=Path("/ngen/ngen/data/config/"),
         forcing_path=Path("/ngen/ngen/data/forcings/"),
     )
-
+    create_partitions(paths)
     paths.setup_run_folders()
 
 

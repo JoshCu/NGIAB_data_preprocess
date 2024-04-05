@@ -38,9 +38,6 @@ async function update_selected() {
     }
 }
 
-
-
-
 async function populate_upstream() {
     console.log('populating upstream selected');
     // drop any key that is not in the wb_id_dict
@@ -266,6 +263,25 @@ async function addLayers() {
     }));
 }
 
+async function preload_zarrs() {
+    original_text = document.getElementById('forcings-button').textContent;
+    document.getElementById('forcings-button').disabled = true;
+    document.getElementById('forcings-button').textContent = "Preloading Zarr Metadata";
+
+    document.getElementById('forcings-loading').style.visibility = "visible";
+    const zarrs = await fetch('/preload_zarrs', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+    })
+        .then(_ => {
+            document.getElementById('forcings-button').disabled = false;
+            document.getElementById('forcings-loading').style.visibility = "hidden";
+            document.getElementById('forcings-button').textContent = original_text;
+        });
+}
+
+
+
 geometry_urls = {
     '16': 'e8ddee6a8a90484fa7a976458e79c0c3',
     '01': '5f0e81c665314967a1e15e4ae672aaae',
@@ -333,6 +349,11 @@ var wmtsLayer = L.tileLayer(baseUrl +
 addLayers().then(() => {
     console.log('added layers');
     map.on('click', onMapClick);
+});
+
+preload_zarrs().then((zarrs) => {
+    console.log('preloaded zarrs');
+    console.log(zarrs);
 });
 
 

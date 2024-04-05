@@ -73,3 +73,6 @@ class file_paths:
         Path(self.subset_dir() / "restart").mkdir(parents=True, exist_ok=True)
         Path(self.subset_dir() / "lakeout").mkdir(parents=True, exist_ok=True)
         Path(self.subset_dir() / "outputs").mkdir(parents=True, exist_ok=True)
+        Path(self.subset_dir() / "outputs" / "ngen").mkdir(parents=True, exist_ok=True)
+        Path(self.subset_dir() / "outputs" / "parquet").mkdir(parents=True, exist_ok=True)
+        Path(self.subset_dir() / "outputs" / "troute").mkdir(parents=True, exist_ok=True)
