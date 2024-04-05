@@ -147,6 +147,7 @@ def configure_troute(
     # TODO figure out what ngens doing with the timesteps.
     nts = (end_time - start_time).total_seconds() / time_step_size
     troute["compute_parameters"]["forcing_parameters"]["nts"] = nts
+    troute["compute_parameters"]["forcing_parameters"]["max_loop_size"] = nts
     time_step_size = int(troute["compute_parameters"]["forcing_parameters"]["dt"])  # seconds
 
     number_of_hourly_steps = nts * time_step_size / 3600
