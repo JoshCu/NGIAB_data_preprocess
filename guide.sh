@@ -63,7 +63,7 @@ validate_directory() {
     local color=$3
 
     if [ -d "$dir" ]; then
-        local count=$(ls "$dir" | wc -l)
+        local count=$(ls -R "$dir" | wc -l)
         echo -e "${color}${name}${Color_Off} exists. $count ${name} found."
     else
         echo -e "Error: Directory $dir does not exist."
