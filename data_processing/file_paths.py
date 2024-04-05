@@ -51,6 +51,18 @@ class file_paths:
     def dev_file() -> Path:
         return Path(__file__).parent.parent / ".dev"
 
+    @staticmethod
+    def template_troute_config() -> Path:
+        return file_paths.data_sources() / "ngen-routing-template.yaml"
+
+    @staticmethod
+    def template_realization_config() -> Path:
+        return file_paths.data_sources() / "ngen-realization-template.json"
+
+    @staticmethod
+    def template_noahowp_config() -> Path:
+        return file_paths.data_sources() / "noah-owp-modular-init.namelist.input"
+
     def subset_dir(self) -> Path:
         return file_paths.root_output_dir() / self.wb_id
 
@@ -65,9 +77,6 @@ class file_paths:
 
     def cached_nc_file(self) -> Path:
         return file_paths.subset_dir(self) / "merged_data.nc"
-
-    def template_troute_config(self) -> Path:
-        return file_paths.data_sources() / "ngen-routing-template.yaml"
 
     def setup_run_folders(self) -> None:
         Path(self.subset_dir() / "restart").mkdir(parents=True, exist_ok=True)

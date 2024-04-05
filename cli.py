@@ -2,7 +2,7 @@ import argparse
 from data_processing.file_paths import file_paths
 from data_processing.subset import subset
 from data_processing.forcings import create_forcings
-from data_processing.create_realization import create_cfe_wrapper
+from data_processing.create_realization import create_realization
 import os
 import sys
 from datetime import datetime
@@ -110,7 +110,7 @@ def main():
         if not args.start_date or not args.end_date:
             print("Realization creation requires both --start_date and --end_date to be provided.")
             sys.exit()
-        create_cfe_wrapper(wb_id_for_name, start_time=args.start_date, end_time=args.end_date)
+        create_realization(wb_id_for_name, start_time=args.start_date, end_time=args.end_date)
 
 
 if __name__ == "__main__":

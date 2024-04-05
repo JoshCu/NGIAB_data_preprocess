@@ -15,7 +15,7 @@ import pyproj
 import multiprocessing
 
 from data_processing.gpkg_utils import get_table_crs, blob_to_geometry, blob_to_centroid
-from data_processing.create_realization import create_cfe_wrapper
+from data_processing.create_realization import create_realization
 from data_processing.file_paths import file_paths
 from data_processing.forcings import create_forcings, load_zarr_datasets
 from data_processing.graph_utils import get_from_to_id_pairs, get_upstream_ids
@@ -291,7 +291,7 @@ def get_realization():
     # get the forcings
     start_time = datetime.strptime(start_time, "%Y-%m-%dT%H:%M")
     end_time = datetime.strptime(end_time, "%Y-%m-%dT%H:%M")
-    create_cfe_wrapper(wb_id, start_time, end_time)
+    create_realization(wb_id, start_time, end_time)
     return "success", 200
 
 
@@ -312,6 +312,7 @@ def get_wbids_from_vpu():
         ),
         200,
     )
+
 
 @main.route("/preload_zarrs", methods=["GET"])
 def preload_zarrs():
