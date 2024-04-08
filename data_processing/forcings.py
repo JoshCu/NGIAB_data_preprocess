@@ -4,8 +4,12 @@ import os
 import time
 from pathlib import Path
 from typing import Tuple
-from functools import partial
+from functools import partial, cache
+from datetime import datetime
 
+import numba
+import numpy as np
+import dask
 import geopandas as gpd
 import pandas as pd
 import s3fs
@@ -16,19 +20,25 @@ from data_processing.file_paths import file_paths
 
 logger = logging.getLogger(__name__)
 
+dask.config.set({"array.chunk-size": "1024MiB"})
 
-def load_zarr_datasets(start_time: str, end_time: str) -> xr.Dataset:
+
+@cache
+def open_s3_store(url: str) -> s3fs.S3Map:
+    """Open an s3 store from a given url."""
+    return s3fs.S3Map(url, s3=s3fs.S3FileSystem(anon=True))
+
+
+@cache
+def load_zarr_datasets() -> xr.Dataset:
     """Load zarr datasets from S3 within the specified time range."""
     forcing_vars = ["lwdown", "precip", "psfc", "q2d", "swdown", "t2d", "u2d", "v2d"]
     s3_urls = [
         f"s3://noaa-nwm-retrospective-3-0-pds/CONUS/zarr/forcing/{var}.zarr"
         for var in forcing_vars
     ]
-    s3_stores = [s3fs.S3Map(url, s3=s3fs.S3FileSystem(anon=True)) for url in s3_urls]
-
-    dataset = xr.open_mfdataset(s3_stores, combine="by_coords", parallel=True, engine="zarr").sel(
-        time=slice(start_time, end_time)
-    )
+    s3_stores = [open_s3_store(url) for url in s3_urls]
+    dataset = xr.open_mfdataset(s3_stores, parallel=True, engine="zarr")
     return dataset
 
 
@@ -39,127 +49,141 @@ def load_geodataframe(geopackage_path: str, projection: str) -> gpd.GeoDataFrame
 
 
 def clip_dataset_to_bounds(
-    dataset: xr.Dataset, bounds: Tuple[float, float, float, float]
+    dataset: xr.Dataset, bounds: Tuple[float, float, float, float], start_time: str, end_time: str
 ) -> xr.Dataset:
     """Clip the dataset to specified geographical bounds."""
-    return dataset.sel(x=slice(bounds[0], bounds[2]), y=slice(bounds[1], bounds[3]))
-
-
-def compute_store(stores: xr.Dataset, subset_dir: Path) -> xr.Dataset:
-    merged_data = stores.compute()
-    if file_paths.dev_file().exists():
-        merged_data.to_netcdf(subset_dir)
-    return merged_data
-
-
-def compute_and_save(
-    rasters: xr.Dataset,
-    forcings_dir: Path,
-    times: pd.DatetimeIndex,
-    gdf_chunk: gpd.GeoDataFrame,
-    variable: str,
-) -> pd.DataFrame:
-    """
-    Compute and save zonal stats for a given variable on a given chunk of the geodataframe.
-    This function is called in parallel.
-    """
-    raster = rasters[variable]
-    logger.debug(f"Computing {variable} for all times")
-    results = exact_extract(
-        raster, gdf_chunk, ["mean"], include_cols=["divide_id"], output="pandas"
+    dataset = dataset.sel(
+        x=slice(bounds[0], bounds[2]),
+        y=slice(bounds[1], bounds[3]),
+        time=slice(start_time, end_time),
     )
-
-    results.set_index("divide_id", inplace=True)
-
-    for i in results.index:
-        single_divide = results.loc[i].to_frame()
-        # drop first row if needed
-        if len(single_divide) != len(times):
-            single_divide = single_divide.iloc[1:]
-        divide_id = single_divide.columns[0]
-        single_divide.columns = [variable]
-        # convert row index to timestamp
-        single_divide.index = times
-        if variable == "RAINRATE":
-            single_divide["APCP_surface"] = (single_divide[variable] * 3600 * 1000) / 0.998
-        # write to file
-        single_divide.to_feather(forcings_dir / f"temp/{variable}_{divide_id}.feather")
+    logger.info("Selected time range and clipped to bounds")
+    return dataset
 
 
-def chunk_gdf(gdf, chunk_size):
-    """Yield successive n-sized chunks from gdf."""
-    for i in range(0, len(gdf), chunk_size):
-        yield gdf.iloc[i : i + chunk_size]
+def compute_store(stores: xr.Dataset, cached_nc_path: Path) -> xr.Dataset:
+    if file_paths.dev_file().exists():
+        stores.to_netcdf(cached_nc_path)
+    data = xr.open_mfdataset(cached_nc_path, parallel=True, engine="h5netcdf")
+    return data
+
+
+@numba.njit(parallel=True)
+def compute_weighted_mean(data_array, cell_ids, weights):
+    mean_at_timestep = np.zeros(data_array.shape[0])
+    for time_step in numba.prange(data_array.shape[0]):
+        weighted_total = 0.0
+        for i in range(cell_ids.shape[0]):
+            weighted_total += data_array[time_step][cell_ids[i]] * weights[i]
+        mean_at_timestep[time_step] = weighted_total / weights.sum()
+    return mean_at_timestep
+
+
+def get_cell_weights(raster, gdf):
+    output = exact_extract(
+        raster["LWDOWN"],
+        gdf,
+        ["cell_id", "coverage"],
+        include_cols=["divide_id"],
+        output="pandas",
+    )
+    return output.set_index("divide_id")
+
+
+def add_APCP_SURFACE_to_dataset(dataset: xr.Dataset) -> xr.Dataset:
+    dataset["APCP_surface"] = (dataset["RAINRATE"] * 3600 * 1000) / 0.998
+    return dataset
 
 
 def compute_zonal_stats(
-    gdf: gpd.GeoDataFrame, merged_data: xr.Dataset, forcings_dir: Path, chunk_size=None
+    gdf: gpd.GeoDataFrame, merged_data: xr.Dataset, forcings_dir: Path
 ) -> None:
     logger.info("Computing zonal stats in parallel for all timesteps")
     timer_start = time.time()
-    for file in os.listdir(forcings_dir / "temp"):
-        os.remove(forcings_dir / "temp" / file)
-
-    variables = ["LWDOWN", "PSFC", "Q2D", "RAINRATE", "SWDOWN", "T2D", "U2D", "V2D"]
-    # compute zonal stats in parallel, chunks should be an 8th of total cpu count
-    # computation is done once per chunk per variable aka chunks * variables
-
-    if chunk_size is None:
-        # the - signs invert the // floor division operator to round up instead of down
-        chunk_size = -(len(variables) * len(gdf) // -multiprocessing.cpu_count())
-
-        if chunk_size < 1:
-            # division by zero protection
-            chunk_size = 1
-
-    logger.debug(f"Chunk size: {chunk_size}")
-    logger.debug(f"CPU count: {multiprocessing.cpu_count()}")
-    logger.debug(f"Total divides: {len(gdf)}")
-
-    gdf_chunks = list(chunk_gdf(gdf, chunk_size))
-
+    gfd_chunks = np.array_split(gdf, multiprocessing.cpu_count() - 1)
+    one_timestep = merged_data.isel(time=0).compute()
     with multiprocessing.Pool() as pool:
-        partial_compute_and_save = partial(
-            compute_and_save, merged_data, forcings_dir, merged_data.time.values
+        args = [(one_timestep, gdf_chunk) for gdf_chunk in gfd_chunks]
+        catchments = pool.starmap(get_cell_weights, args)
+
+    catchments = pd.concat(catchments)
+
+    # adding APCP_SURFACE to the dataset, this is a hack and not a real APCP_SURFACE
+    merged_data["APCP_surface"] = (merged_data["RAINRATE"] * 3600 * 1000) / 0.998
+
+    variables = [
+        "LWDOWN",
+        "PSFC",
+        "Q2D",
+        "RAINRATE",
+        "SWDOWN",
+        "T2D",
+        "U2D",
+        "V2D",
+        "APCP_surface",
+    ]
+
+    results = []
+    for variable in variables:
+        variable_data = []
+        raster = merged_data[variable].values.reshape(merged_data[variable].shape[0], -1)
+        for catchment in catchments.index.unique():
+            cell_ids = catchments.loc[catchment]["cell_id"]
+            weights = catchments.loc[catchment]["coverage"]
+
+            mean_at_timesteps = compute_weighted_mean(raster, cell_ids, weights)
+
+            temp_da = xr.DataArray(
+                mean_at_timesteps,
+                dims=["time"],
+                coords={"time": merged_data["time"].values},
+                name=f"{variable}_{catchment}",
+            )
+            temp_da = temp_da.assign_coords(catchment=catchment)
+            variable_data.append(temp_da)
+
+        # Concatenate data arrays for each variable across all catchments
+        concatenated_da = xr.concat(variable_data, dim="catchment")
+        results.append(concatenated_da.to_dataset(name=variable))
+
+    # Combine all variables into a single dataset
+    final_ds = xr.merge(results)
+
+    output_folder = forcings_dir / "by_catchment"
+    # Clear out any existing files
+    for file in output_folder.glob("*.csv"):
+        file.unlink()
+
+    final_ds = final_ds.rename_vars(
+        {
+            "LWDOWN": "DLWRF_surface",
+            "PSFC": "PRES_surface",
+            "Q2D": "SPFH_2maboveground",
+            "RAINRATE": "precip_rate",
+            "SWDOWN": "DSWRF_surface",
+            "T2D": "TMP_2maboveground",
+            "U2D": "UGRD_10maboveground",
+            "V2D": "VGRD_10maboveground",
+            "APCP_surface": "APCP_surface",
+        }
+    )
+
+    logger.info("Saving to disk")
+    # Save to disk
+    delayed_saves = []
+    for catchment in final_ds.catchment.values:
+        catchment_ds = final_ds.sel(catchment=catchment)
+        csv_path = output_folder / f"{catchment}.csv"
+        delayed_save = dask.delayed(
+            catchment_ds.to_dataframe().drop(["catchment"], axis=1).to_csv(csv_path)
         )
-        args = [(gdf_chunk, variable) for gdf_chunk in gdf_chunks for variable in variables]
-        pool.starmap(partial_compute_and_save, args)
-    catchment_ids = gdf["divide_id"].unique()
+        delayed_saves.append(delayed_save)
 
-    # clear catchment files
-    for file in os.listdir(forcings_dir / "by_catchment"):
-        os.remove(forcings_dir / "by_catchment" / file)
+    dask.compute(*delayed_saves)
 
-    # open and merge the dfs by catchment
-    for cat in catchment_ids:
-        dfs = []
-        for variable in variables:
-            try:
-                df = pd.read_feather(forcings_dir / f"temp/{variable}_{cat}.feather")
-                dfs.append(df)
-            except FileNotFoundError:
-                logger.warning(f"File not found for {variable} and {cat}")
-        if len(dfs) > 0:
-            merged_df = pd.concat(dfs, axis=1)
-            # rename the columns
-            merged_df.columns = [
-                "DLWRF_surface",
-                "PRES_surface",
-                "SPFH_2maboveground",
-                "precip_rate",
-                "APCP_surface",
-                "DSWRF_surface",
-                "TMP_2maboveground",
-                "UGRD_10maboveground",
-                "VGRD_10maboveground",
-            ]
-            merged_df.index.name = "time"
-            merged_df.to_csv(forcings_dir / f"by_catchment/{cat}.csv")
-
-    for file in os.listdir(forcings_dir / "temp"):
-        os.remove(forcings_dir / "temp" / file)
-    os.rmdir(forcings_dir / "temp")
-    logger.info(f"Zonal stats computed in {time.time() - timer_start} seconds")
+    logger.info(
+        f"Forcing generation complete!\nZonal stats computed in {time.time() - timer_start} seconds"
+    )
 
 
 def setup_directories(wb_id: str) -> file_paths:
@@ -172,29 +196,49 @@ def setup_directories(wb_id: str) -> file_paths:
 
 def create_forcings(start_time: str, end_time: str, output_folder_name: str) -> None:
     forcing_paths = setup_directories(output_folder_name)
-    projection = xr.open_dataset(forcing_paths.template_nc(), engine="netcdf4").crs.esri_pe_string
+    projection = xr.open_dataset(forcing_paths.template_nc(), engine="h5netcdf").crs.esri_pe_string
     logger.info("Got projection from grid file")
 
     gdf = load_geodataframe(forcing_paths.geopackage_path(), projection)
     logger.info("Got gdf")
 
-    if not os.path.exists(forcing_paths.cached_nc_file()):
-        logger.info("No cached nc file found")
+    if type(start_time) == datetime:
+        start_time = start_time.strftime("%Y-%m-%d %H:%M")
+    if type(end_time) == datetime:
+        end_time = end_time.strftime("%Y-%m-%d %H:%M")
+
+    merged_data = None
+    if os.path.exists(forcing_paths.cached_nc_file()):
+        logger.info("found cached nc file")
+        # open the cached file and check that the time range is correct
+        cached_data = xr.open_mfdataset(
+            forcing_paths.cached_nc_file(), parallel=True, engine="h5netcdf"
+        )
+        if cached_data.time[0].values <= np.datetime64(start_time) and cached_data.time[
+            -1
+        ].values >= np.datetime64(end_time):
+            logger.info("Time range is correct")
+            logger.info(f"Opened cached nc file: [{forcing_paths.cached_nc_file()}]")
+            merged_data = clip_dataset_to_bounds(
+                cached_data, gdf.total_bounds, start_time, end_time
+            )
+            logger.info("Clipped stores")
+        else:
+            logger.info("Time range is incorrect")
+            os.remove(forcing_paths.cached_nc_file())
+            logger.info("Removed cached nc file")
+
+    if merged_data is None:
         logger.info("Loading zarr stores, this may take a while.")
-        lazy_store = load_zarr_datasets(start_time, end_time)
+        lazy_store = load_zarr_datasets()
         logger.info("Got zarr stores")
 
-        clipped_store = clip_dataset_to_bounds(lazy_store, gdf.total_bounds)
+        clipped_store = clip_dataset_to_bounds(lazy_store, gdf.total_bounds, start_time, end_time)
         logger.info("Clipped stores")
 
         merged_data = compute_store(clipped_store, forcing_paths.cached_nc_file())
         logger.info("Computed store")
-    else:
-        merged_data = xr.open_dataset(forcing_paths.cached_nc_file())
-        logger.info("Opened cached nc file")
 
-    # print(type(merged_data))
-    logger.info(f"Opened cached nc file: [{forcing_paths.cached_nc_file()}]")
     logger.info("Computing zonal stats")
     compute_zonal_stats(gdf, merged_data, forcing_paths.forcings_dir())
 

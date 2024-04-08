@@ -2,7 +2,7 @@ import argparse
 from data_processing.file_paths import file_paths
 from data_processing.subset import subset
 from data_processing.forcings import create_forcings
-from data_processing.create_realization import create_cfe_wrapper
+from data_processing.create_realization import create_realization
 import os
 import sys
 from datetime import datetime
@@ -17,7 +17,8 @@ def main():
 
     # Add input arguments
     my_parser.add_argument(
-        "input_wbs_file",
+        "-i",
+        "--input_file",
         type=str,
         help="Path to a csv or txt file containing a list of waterbody IDs",
     )
@@ -58,25 +59,32 @@ def main():
 
     # Execute the parse_args() method
     args = my_parser.parse_args()
-    input_wbs_file = Path(args.input_wbs_file)
-
-    # Check if the input file exists
-    if not input_wbs_file.exists():
-        print(f"The file {input_wbs_file} does not exist")
+    if not any([args.subset, args.forcings, args.realization]):
+        print("At least one of --subset, --forcings, or --realization must be set.")
         sys.exit()
+    if args.subset:
+        input_file = Path(args.input_file)
 
-    # Validate the file type
-    if input_wbs_file.suffix not in [".csv", ".txt", ""]:
-        print(f"Unsupported file type: {input_wbs_file.suffix}")
-        sys.exit()
+        # Check if the input file exists
+        if not input_file.exists():
+            print(f"The file {input_file} does not exist")
+            sys.exit()
 
-    # Read in the waterbody IDs
-    with input_wbs_file.open("r") as f:
-        waterbody_ids = f.read().splitlines()
+        # Validate the file type
+        if input_file.suffix not in [".csv", ".txt", ""]:
+            print(f"Unsupported file type: {input_file.suffix}")
+            sys.exit()
+
+        # Read in the waterbody IDs
+        with input_file.open("r") as f:
+            waterbody_ids = f.read().splitlines()
     if args.output_name:
         wb_id_for_name = args.output_name
-    else:
+    elif waterbody_ids:
         wb_id_for_name = waterbody_ids[0]
+    else:
+        print("No waterbody input file or output folder provided.")
+        sys.exit()
     paths = file_paths(wb_id_for_name)
     output_folder = paths.subset_dir()
 
@@ -102,7 +110,7 @@ def main():
         if not args.start_date or not args.end_date:
             print("Realization creation requires both --start_date and --end_date to be provided.")
             sys.exit()
-        create_cfe_wrapper(wb_id_for_name, start_time=args.start_date, end_time=args.end_date)
+        create_realization(wb_id_for_name, start_time=args.start_date, end_time=args.end_date)
 
 
 if __name__ == "__main__":

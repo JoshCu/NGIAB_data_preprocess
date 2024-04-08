@@ -117,8 +117,8 @@ def subset(
     subset_parquet(upstream_ids, paths)
     make_geojson(paths)
     move_files_to_config_dir(paths.subset_dir())
-    logger.info(f"Subset complete for {upstream_ids}")
-
+    logger.info(f"Subset complete for {len(upstream_ids)} catchments")
+    logger.debug(f"Subset complete for {upstream_ids} catchments")
     return str(paths.subset_dir())
 
 
