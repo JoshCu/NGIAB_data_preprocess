@@ -16,6 +16,8 @@ import s3fs
 import xarray as xr
 from exactextract import exact_extract
 
+from dask.distributed import Client, get_client
+
 from data_processing.file_paths import file_paths
 
 logger = logging.getLogger(__name__)
@@ -62,9 +64,8 @@ def clip_dataset_to_bounds(
 
 
 def compute_store(stores: xr.Dataset, cached_nc_path: Path) -> xr.Dataset:
-    if file_paths.dev_file().exists():
-        stores.to_netcdf(cached_nc_path)
-    data = xr.open_mfdataset(cached_nc_path, parallel=True, engine="h5netcdf")
+    stores.to_netcdf(cached_nc_path)
+    data = xr.open_mfdataset(cached_nc_path, parallel=True, engine = "netcdf4")
     return data
 
 
@@ -196,7 +197,7 @@ def setup_directories(wb_id: str) -> file_paths:
 
 def create_forcings(start_time: str, end_time: str, output_folder_name: str) -> None:
     forcing_paths = setup_directories(output_folder_name)
-    projection = xr.open_dataset(forcing_paths.template_nc(), engine="h5netcdf").crs.esri_pe_string
+    projection = xr.open_dataset(forcing_paths.template_nc()).crs.esri_pe_string
     logger.info("Got projection from grid file")
 
     gdf = load_geodataframe(forcing_paths.geopackage_path(), projection)
@@ -212,7 +213,7 @@ def create_forcings(start_time: str, end_time: str, output_folder_name: str) -> 
         logger.info("found cached nc file")
         # open the cached file and check that the time range is correct
         cached_data = xr.open_mfdataset(
-            forcing_paths.cached_nc_file(), parallel=True, engine="h5netcdf"
+            forcing_paths.cached_nc_file(), parallel=True, engine = "netcdf4"
         )
         if cached_data.time[0].values <= np.datetime64(start_time) and cached_data.time[
             -1

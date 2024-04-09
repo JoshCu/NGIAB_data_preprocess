@@ -4,7 +4,7 @@ pyogrio
 pyproj
 flask
 flask-cors
-gdal
+gdal==3.4.1
 # https://www.reddit.com/r/django/comments/wbw9rl/comment/ii9anl6/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
 geopandas
 requests
@@ -14,7 +14,7 @@ xarray
 rioxarray
 zarr
 netcdf4
-dask
+dask[distributed]
 black
 isort
 h5netcdf

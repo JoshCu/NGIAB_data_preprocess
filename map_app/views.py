@@ -14,6 +14,8 @@ from shapely.ops import transform
 import pyproj
 import multiprocessing
 
+from dask.distributed import Client, get_client
+
 from data_processing.gpkg_utils import get_table_crs, blob_to_geometry, blob_to_centroid
 from data_processing.create_realization import create_realization
 from data_processing.file_paths import file_paths
@@ -262,6 +264,11 @@ def subset_to_file():
 @main.route("/forcings", methods=["POST"])
 def get_forcings():
     # body: JSON.stringify({'forcing_dir': forcing_dir, 'start_time': start_time, 'end_time': end_time}),
+    # create the dask client here 
+    try:
+        client = get_client()
+    except ValueError:
+        client = Client()
     data = json.loads(request.data.decode("utf-8"))
     wb_id = data.get("forcing_dir").split("/")[-1]
     start_time = data.get("start_time")
@@ -315,13 +322,6 @@ def get_wbids_from_vpu():
         ),
         200,
     )
-
-
-@main.route("/preload_zarrs", methods=["GET"])
-def preload_zarrs():
-    load_zarr_datasets()
-    return "success", 200
-
 
 @main.route("/logs", methods=["GET"])
 def get_logs():
