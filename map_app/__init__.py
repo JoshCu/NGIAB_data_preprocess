@@ -4,7 +4,7 @@ from flask_cors import CORS
 import logging
 from .views import intra_module_db, main
 
-logging.getLogger("werkzeug").setLevel(logging.WARNING)
+logging.getLogger("werkzeug").setLevel(logging.INFO)
 
 app = Flask(__name__)
 app.register_blueprint(main)

@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 
 @main.route("/")
 def index():
+    # turn off the api logs here so that the web server address is printed on boot
+    # but the api logs are not printed to the console after that
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
     return render_template("index.html")
 
 
@@ -322,6 +325,9 @@ def preload_zarrs():
 
 @main.route("/logs", methods=["GET"])
 def get_logs():
+    # also turn off here so the logs aren't flooded if the backend is refreshed without
+    # reloadiing the page
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
     log_file_path = "app.log"
     try:
         with open(log_file_path, "r") as file:
