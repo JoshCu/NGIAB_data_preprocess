@@ -7,3 +7,4 @@ env
 __pycache__
 .dev
 app.log
+nwisiv_cache.sqlite

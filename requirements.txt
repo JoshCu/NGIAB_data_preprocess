@@ -19,3 +19,7 @@ black
 isort
 h5netcdf
 numba
+# demo packages
+ipykernel
+matplotlib
+hydrotools
